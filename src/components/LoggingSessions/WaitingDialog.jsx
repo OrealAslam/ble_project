@@ -1,0 +1,25 @@
+import React, { Component } from 'react'
+import PropTypes from 'prop-types'
+import { View, Text } from 'react-native'
+import { Dialog } from '@rneui/themed'
+
+class WaitingDialog extends Component {
+
+  renderBody = (props,state) => {
+    return  <Dialog>
+      <Dialog.Loading />
+      <View style={{ display: 'flex', alignItems: 'center' }}>
+        <Text >
+          {props.text || 'Waiting...'}
+        </Text>
+      </View>
+    </Dialog>
+  }
+
+  render() {
+    return this.renderBody(this.props,this.state)
+  }
+
+}
+
+export default WaitingDialog

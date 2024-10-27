@@ -5,8 +5,9 @@ import { SafeAreaView, ScrollView, Linking, View, Text, ImageBackground, Dimensi
 import { connect } from 'react-redux'
 import { DateTime } from 'luxon'
 import RNFS from 'react-native-fs'
-import Mailer from 'react-native-mail'
 import { Dialog } from '@rneui/themed'
+import Share from 'react-native-share'
+import RNFetchBlob from "rn-fetch-blob"
 
 import { getLoggingSession, fetchLoggingSessionSamples, clearLoggingSession, deleteLoggingSession, updateLoggingSessionComment } from '../../actions/LoggingActions'
 import ActionsMenu from '../../components/LoggingSessions/ActionsMenu'
@@ -15,6 +16,7 @@ import SessionLineChart from '../../components/LoggingSessions/SessionLineChart'
 import LoggingSessionCommentDialog from '../../components/LoggingSessions/LoggingSessionCommentDialog'
 import WaitingDialog from '../../components/LoggingSessions/WaitingDialog'
 import Comment from '../../components/LoggingSessions/Comment'
+
 
 const DeleteSessionDialog = ({visible,deleteSessionHandler}) => {
 
@@ -104,7 +106,6 @@ class LoggingSessionView extends Component {
     const { id }  = loggingSession
     return <ActionsMenu
       loggingSessionId={id}
-      emailDataHandler={this.emailData}
       exportDataHandler={this.exportData}
       deleteSessionHandler={this.deleteSession}
     />
@@ -150,13 +151,13 @@ class LoggingSessionView extends Component {
       })
     const imageFiles = await RNFS.readDir(`${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/images`)
       .catch(e => {
-        console.log("XXX RNFS.readDir error",e)
+        console.log("XXX RNFS.readDir error 1",e)
         return []
       })
 
     const mapFiles = await RNFS.readDir(`${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/mapimage`)
       .catch(e => {
-        console.log("XXX RNFS.readDir error",e)
+        console.log("XXX RNFS.readDir error 2",e)
         return []
       })
 
@@ -200,7 +201,7 @@ class LoggingSessionView extends Component {
 
   }
 
-  emailData = async () => {
+  exportData = async () => {
 
     this.setState({
       waitingDialogVisible: true,
@@ -212,31 +213,33 @@ class LoggingSessionView extends Component {
     const dateTime = DateTime.fromMillis(timestamp)
 
     const attachments = await this.getAttachments()
+    const attachmentUrlsArray = []
+    const attachmentFilenamesArray = []
+
+    for (const attachment of attachments) {
+
+      const filePath = attachment.path
+      if (!filePath) return true
+      const pathSplit = filePath.split("/")
+      const fileName = pathSplit[pathSplit.length-1]
+      attachmentFilenamesArray.push(fileName)
+
+      const data = await RNFetchBlob.fs.readFile(filePath, 'base64')
+      const base64Data = `data:${attachment.type};base64,${data}`
+
+      attachmentUrlsArray.push(base64Data)
+
+    }
 
     const mailSubject = `NEP-Link Files for logging session at ${dateTime.toFormat("dd-LLL-yyyy HH:mm:ss")}`
     const mailBody = `<p>Hello,</p><p>Here are your files for the logging session conducted at ${dateTime.toFormat("dd-LLL-yyyy HH:mm:ss")}.</p>`
-    Mailer.mail({
-        subject: mailSubject,
-        body: mailBody,
-        isHTML: true,
-        attachments,
-    }, (error, event) => {
-      console.log('error', error)
+
+    Share.open({
+      title: mailSubject,
+      message: mailBody,
+      urls: attachmentUrlsArray,
+      filenames: attachmentFilenamesArray,
     })
-    this.setState({
-      waitingDialogVisible: false,
-      waitingDialogText: '',
-    })
-
-  }
-
-  exportData = async () => {
-
-    const { loggingSession } = this.props.logging
-    const timestamp = loggingSession.timestamp
-    const dateTime = DateTime.fromMillis(timestamp)
-
-    const attachments = await this.getAttachments()
 
   }
 
@@ -311,15 +314,21 @@ class LoggingSessionView extends Component {
 
   updateImages = async (loggingSessionId) => {
 
-    const mapFiles = await RNFS.readDir(`${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/mapimage`)
+    const fileDirsRootPath = `${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}`
+
+    const mapFilesDirName = `${fileDirsRootPath}/mapimage`
+    const mapFiles = await RNFS.readDir(mapFilesDirName)
       .catch(e => {
-        console.log("XXX RNFS.readDir error",e)
+        console.log("XXX RNFS.readDir error 3",e)
+        RNFS.mkdir(mapFilesDirName)
         return []
       })
 
-    const imageFiles = await RNFS.readDir(`${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/images`)
+    const imageFilesDirName = `${fileDirsRootPath}/images`
+    const imageFiles = await RNFS.readDir(imageFilesDirName)
       .catch(e => {
-        console.log("XXX RNFS.readDir error",e)
+        console.log("XXX RNFS.readDir error 4",e)
+        RNFS.mkdir(imageFilesDirName)
         return []
       })
 

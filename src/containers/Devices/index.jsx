@@ -8,6 +8,7 @@ import { CommonActions } from '@react-navigation/native'
 import RNLocation from 'react-native-location'
 import { DateTime } from 'luxon'
 
+import { setDemoModeEnabled } from '../../actions/DemoActions'
 import { setDeviceConnecting, setDeviceConnected, setDeviceDisconnecting, setDeviceDisconnected, clearConnectedDevice, setWiping,
   setSensorDataReceived, setSensorError, setDiscoveredDevices, setBondedDevices, addKnownDevices,
   fetchKnownDevices } from '../../actions/DeviceActions'
@@ -38,23 +39,32 @@ class Devices extends Component {
       locationLng: null,
       lastSaveLoggingSessionSamplesCount: 0,
       attemptingConnection: false,
+      demoModeEnabled: false
     }
   }
 
   async componentDidMount() {
 
-    // console.log("XXX Devices componentDidMount",this.state)
+    console.log("XXX Devices componentDidMount")
 
     BluetoothService.init()
 
-    this.disconnectSubscription //= RNBluetoothClassic.onDeviceDisconnected(this.onDeviceDisconnected)
-    this.onDataReceivedSubscription = null
+    //this.disconnectSubscription //= RNBluetoothClassic.onDeviceDisconnected(this.onDeviceDisconnected)
+    // this.onDataReceivedSubscription = null
 
-    this.bluetoothEnabledSubscription //= RNBluetoothClassic.onBluetoothEnabled(this.onBluetoothStateChange)
-    this.bluetoothDisabledSubscription //= RNBluetoothClassic.onBluetoothDisabled(this.onBluetoothStateChange)
+    // this.bluetoothEnabledSubscription //= RNBluetoothClassic.onBluetoothEnabled(this.onBluetoothStateChange)
+    // this.bluetoothDisabledSubscription //= RNBluetoothClassic.onBluetoothDisabled(this.onBluetoothStateChange)
 
     await this.getBluetoothPermissionsAndStartBluetoothProcesses.call(this)
     this.locationUpdate.call(this)
+
+    BluetoothService.startScan(() => {
+      console.log("XXX bluetoothStateFunction")
+    },
+    (devicesFound) => {
+      console.log("XXX updateFunction",devicesFound)
+      this.updateBondedDevices(devicesFound)
+    })
 
   }
 
@@ -79,9 +89,9 @@ class Devices extends Component {
 
   }
 
-  componentDidUpdate() {
+  componentDidUpdate(prevState,prevProps) {
 
-    const { logging, dispatch } = this.props
+    const { logging, dispatch, demo } = this.props
     const { loggingSessionId, loggingSessionSamples } = logging
     if ((loggingSessionSamples.length-this.state.lastSaveLoggingSessionSamplesCount) >= 10) {
       this.setState({
@@ -89,12 +99,22 @@ class Devices extends Component {
       })
       dispatch(saveLoggingSessionSamples(loggingSessionId,loggingSessionSamples))
     }
+
+    if (!prevState.demoModeEnabled && this.state.demoModeEnabled) {
+      if (this.intervalId) clearInterval(this.intervalId)
+      this.intervalId = setInterval(() => {
+        this.createDemoDataReading.call(this)
+      },1000)
+    }
+
+    if ((demo.demoModeEnabled === false) && this.intervalId) clearInterval(this.intervalId)
+
   }
 
   componentWillUnmount() {
     // console.log("XXX Devices componentWillUnmount")
-    this.disconnectSubscription.remove()
-    if (this.onDataReceivedSubscription) this.onDataReceivedSubscription.remove()
+    //this.disconnectSubscription.remove()
+    //if (this.onDataReceivedSubscription) this.onDataReceivedSubscription.remove()
     this.props.dispatch(resetValues())
   }
 
@@ -103,12 +123,14 @@ class Devices extends Component {
 
   locationUpdate = async () => {
 
-    // console.log("XXX locationUpdate - Running...")
+    console.log("KKK locationUpdate - Running...")
 
     this.locationUpdateId = setInterval(async () => {
+
+      console.log("KKK locationUpdate setInterval 1")
       // console.log("XXX locationUpdate running PermissionsAndroid.request")
-      const permissionsAndroidGranted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION)
-      // console.log("XXX locationUpdate finished running PermissionsAndroid.request",permissionsAndroidGranted)
+      const permissionsAndroidGranted = (Platform.OS === "android") ? await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION) : null
+            // console.log("XXX locationUpdate finished running PermissionsAndroid.request",permissionsAndroidGranted)
       // console.log("XXX locationUpdate running RNLocation.requestPermission")
       const requestPermissionResponse = await RNLocation.requestPermission({
         ios: "whenInUse",
@@ -116,23 +138,24 @@ class Devices extends Component {
           detail: "fine"
         }
       })
-      // console.log("XXX locationUpdate finished RNLocation.requestPermission",requestPermissionResponse)
+      .catch(error => {
+        console.log("KKK locationUpdate Error running RNLocation.requestPermission",error)
+        this.setState({ locationEnabled: false })
+      })
+      console.log("KKK locationUpdate finished RNLocation.requestPermission",requestPermissionResponse)
       // console.log("XXX locationUpdate running RNLocation.configure")
+      console.log("KKK locationUpdate setInterval 2")
       await RNLocation.configure({
           distanceFilter: 5.0
         })
-        .catch(error => {
-          console.log("XXX locationUpdate Error running RNLocation.configure",error)
-          this.setState({ locationEnabled: false })
-        })
-      // console.log("XXX locationUpdate checking location permission")
+      console.log("KKK locationUpdate setInterval 3")
       const getCurrentPermissionResponse = await RNLocation.getCurrentPermission()
-      // console.log("XXX locationUpdate finished checking location permission",getCurrentPermissionResponse)
-      // console.log("XXX locationUpdate",{lat: this.state.locationLat, lng: this.state.locationLng})
-      // console.log("XXX locationUpdate trying location again")
+      console.log("KKK locationUpdate finished checking location permission",getCurrentPermissionResponse)
+      console.log("KKK locationUpdate",{lat: this.state.locationLat, lng: this.state.locationLng})
+      console.log("KKK locationUpdate trying location again")
       if (this.state.locationLat && this.state.locationLng) {
         clearInterval(this.locationUpdateId)
-        console.log("XXX locationUpdate returning")
+        console.log("KKKK locationUpdate returning")
         return
       }
       // console.log("XXX locationUpdate clearing locationSubscription")
@@ -140,18 +163,19 @@ class Devices extends Component {
         await this.locationSubscription()
       }
 
-      // console.log("XXX locationUpdate getLatestLocationInterval trying RNLocation.getLatestLocation at",new Date())
+      // console.log("KKKKK locationUpdate getLatestLocationInterval trying RNLocation.getLatestLocation at",new Date())
       await RNLocation.getLatestLocation({ timeout: 40000 })
         .then(location => {
-          console.log("XXX locationUpdate getLatestLocationInterval latestLocation",location)
+          console.log("KKKKK locationUpdate getLatestLocationInterval latestLocation",location)
           if (location && (typeof location.latitude === 'number')) {
+          console.log("KKK setting state 1")
             this.setState({
               locationEnabled: true,
               locationLat: location.latitude,
               locationLng: location.longitude,
             },() => {
-              // console.warn("XXX locationUpdate RNLocation.getLatestLocation update",{ lat: this.state.locationLat, lng: this.state.locationLng })
-              // console.log("XXX locationUpdate RNLocation.getLatestLocation update",{ lat: this.state.locationLat, lng: this.state.locationLng })
+              //console.warn("KKKK locationUpdate RNLocation.getLatestLocation update",{ lat: this.state.locationLat, lng: this.state.locationLng })
+              console.log("KKKK locationUpdate RNLocation.getLatestLocation update",{ lat: this.state.locationLat, lng: this.state.locationLng })
             })
           }
         })
@@ -165,25 +189,26 @@ class Devices extends Component {
       // console.log("XXX locationUpdate getLatestLocationInterval current lat/lng",{lat: this.state.locationLat, lng: this.state.locationLng})
 
       this.locationSubscription = RNLocation.subscribeToLocationUpdates(locations => {
-        console.warn("LOCATIONS",locations)
+        //console.warn("LOCATIONS",locations)
         const location = locations[0]
-        // console.log("XXX locationUpdate locations.length 2 ---",locations.length)
-        // console.log("XXX locationUpdate locations 2",locations)
-        // console.log("XXX locationUpdate location 2",location)
+        console.log("KKKK locationUpdate locations.length 2 ---",locations.length)
+        console.log("KKKK locationUpdate locations 2",locations)
+        console.log("KKKK locationUpdate location 2",location)
         if (location && (typeof location.latitude === 'number')) {
+          console.log("KKK setting state 2")
           this.setState({
             locationEnabled: true,
             locationLat: location.latitude,
             locationLng: location.longitude,
           },() => {
-            // console.warn("XXX locationUpdate RNLocation.subscribeToLocationUpdates update",{ lat: this.state.locationLat, lng: this.state.locationLng })
-            // console.log("XXX locationUpdate RNLocation.subscribeToLocationUpdates update",{ lat: this.state.locationLat, lng: this.state.locationLng })
+            //console.warn("KKKK locationUpdate RNLocation.subscribeToLocationUpdates update",{ lat: this.state.locationLat, lng: this.state.locationLng })
+            console.log("KKKK locationUpdate RNLocation.subscribeToLocationUpdates update",{ lat: this.state.locationLat, lng: this.state.locationLng })
             clearInterval(this.locationUpdateId)
           })
         }
       })
 
-    },60000)
+    },10000)
 
   }
 
@@ -256,7 +281,6 @@ class Devices extends Component {
       }
       if (devices.connectedDevice) dispatch(clearConnectedDevice())
     }
-
     console.log("XXX connectedDevices",connectedDevices)
   }
 
@@ -266,9 +290,9 @@ class Devices extends Component {
     const { dispatch, navigation, devices } = props
     const deviceToConnect = devices.bondedDevicesRaw.find((o) => o.bleDevice.id === device.id)
     const deviceDataObj = devices.bondedDevicesFormatted.find((o) => o.id === device.id)
-    console.log("XXX device.id",device.id)
-    console.log("XXX devices.bondedDevicesRaw",devices.bondedDevicesRaw)
-    console.log("XXX deviceToConnect",deviceToConnect)
+    // console.log("XXX device.id",device.id)
+    // console.log("XXX devices.bondedDevicesRaw",devices.bondedDevicesRaw)
+    // console.log("XXX deviceToConnect",deviceToConnect)
     this.setState({ awaitingDevice: true, connectingDevice: null, connectedDevice: null })
     if (!deviceToConnect) {// || !deviceToConnect.isConnected) {
       this.setState({ awaitingDevice: true, connectingDevice: null, connectedDevice: null })
@@ -280,6 +304,8 @@ class Devices extends Component {
     }
     this.setState({ awaitingDevice: false, connectingDevice: deviceToConnect, connectedDevice: null })
     //BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onDataReceived)
+    BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onDataReceived)
+    dispatch(setDeviceConnected(deviceToConnect))
     const routeToDeviceView = CommonActions.navigate({
       name: 'DeviceView',
       params: {
@@ -295,7 +321,7 @@ class Devices extends Component {
     const { props } = this
     const { dispatch, devices, logging } = props
 
-    console.log("XXX responseStr",responseStr)
+    console.log("XXX onDataReceived responseStr",responseStr)
 
     const probesEnabled = []
     const probeDataMatch = responseStr.match(/(R\d),(\d+\.\d+),?(\d+\.\d+)?/)
@@ -378,13 +404,95 @@ class Devices extends Component {
     }
   }
 
+  createDemoDataReading = () => {
+
+    const { props } = this
+    const { dispatch, demo, sensorData, devices, logging } = props
+
+    let turbidityEnabled = true
+    let turbidityValue = null
+    let temperatureEnabled = true
+    let temperatureValue = null
+    let batteryLevel
+    let probeSetting
+    let rangeLabel
+
+    const turbidityRangeMin = 5
+    const turbidityRangeMax = 5000
+    turbidityValue = Math.round((((turbidityRangeMax-turbidityRangeMin) * Math.random()) + turbidityRangeMin) * 100) / 100
+
+
+    const temperatureRangeMin = 5
+    const temperatureRangeMax = 35
+    temperatureValue = Math.round((((temperatureRangeMax-temperatureRangeMin) * Math.random()) + temperatureRangeMin) * 10) / 10
+
+    console.log("XXX turbidityValue",turbidityValue)
+    console.log("XXX temperatureValue",temperatureValue)
+
+    probeSetting=="R3"
+    rangeLabel = "High range"
+
+    if (turbidityValue < 1000) {
+      probeSetting=="R2"
+      rangeLabel = "Medium range"
+    } else if (turbidityValue < 10) {
+      probeSetting=="R1"
+      rangeLabel = "Low range"
+    }
+
+    const sampleDateObj = DateTime.now()
+    const tzOffsetStr = sampleDateObj.toFormat('Z')
+    const tzOffsetMs = parseInt(tzOffsetStr) * 1000 * 60 * 60
+    const dataObjTimestamp = sampleDateObj.toFormat('x') - tzOffsetMs
+    dispatch(updateValues({
+      probeSetting,
+      rangeLabel,
+      temperatureEnabled,
+      turbidityEnabled,
+      turbidityValue,
+      temperatureValue,
+      locationEnabled: this.state.locationEnabled,
+      locationLat: this.state.locationLat,
+      locationLng: this.state.locationLng,
+      sampleDateObj,
+    }))
+
+    if (logging.isLogging) {
+      const loggingSessionId = logging.loggingSessionId
+      const dataObj = {
+        loggingSessionId: logging.loggingSessionId,
+        timestamp: dataObjTimestamp,
+        turbidityValue,
+        temperatureValue,
+        locationLat: this.state.locationLat,
+        locationLng: this.state.locationLng,
+        demoModeEnabled: this.state.demoModeEnabled,
+      }
+      dispatch(addDataToLoggingSession(loggingSessionId,dataObj))
+    }
+
+    if (devices.wiping) dispatch(setWiping(false))
+    if (!devices.sensorDataReceived) dispatch(setSensorDataReceived(true))
+
+    if (!sensorData.batteryVoltage) {
+      const batteryLevelRangeMin = 60
+      const batteryLevelRangeMax = 100
+      batteryVoltage = Math.round(((batteryLevelRangeMax-batteryLevelRangeMin) * Math.random()) + batteryLevelRangeMin)
+      dispatch(updateBatteryStatus({
+        batteryVoltage,
+        batteryCharging: false,
+      }))
+    }
+
+  }
+
   onDeviceDisconnected = (event: BluetoothDeviceEvent) => {
     const { devices } = this.props
     console.log("XXX Devices onDeviceDisconnected")
     const { dispatch } = this.props
-    if (this.onDataReceivedSubscription) {
-      this.onDataReceivedSubscription.remove()
-    }
+    // if (this.onDataReceivedSubscription) {
+    //   this.onDataReceivedSubscription.remove()
+    // }
     const { connectedDevice } = this.state
     if (connectedDevice) {
       const deviceDataObj = devices.bondedDevicesFormatted.find((o) => o.address === connectedDevice.address)
@@ -491,22 +599,24 @@ class Devices extends Component {
     this.setState({ bluetoothEnabled: event.enabled })
   }
 
-  addEditDevicesButtonPress = () => {
-    console.log("XXXX addEditDevicesButtonPress")
-    BluetoothService.startScan(() => {
-      console.log("XXX bluetoothStateFunction")
-    },
-    (devicesFound) => {
-      console.log("XXX updateFunction",devicesFound)
-      this.updateBondedDevices(devicesFound)
+  enterDemoModeButtonPress = () => {
+    this.props.dispatch(setDemoModeEnabled(true))
+    this.setState({ demoModeEnabled: true })
+    const routeToDeviceView = CommonActions.navigate({
+      name: 'DeviceView',
+      params: {
+        deviceDataObj: null,
+        demoModeEnabled: true,
+        deviceName: "DEMO",
+      }
     })
-    // const routeToAddEditDevicesList = CommonActions.navigate({
-    //   name: 'AddEditDevices',
-    // })
-    // this.props.navigation.dispatch(routeToAddEditDevicesList)
+    this.props.navigation.dispatch(routeToDeviceView)
   }
 
   renderBody = (props,state) => {
+
+    console.log("XXX this.enterDemoModeButtonPress",this.enterDemoModeButtonPress)
+
     const { devices } = props
     const connectingDeviceLabel = state.connectingDevice ? state.connectingDevice.name : null
     const deviceAddress = state.connectingDevice ? state.connectingDevice.address : null
@@ -538,7 +648,7 @@ class Devices extends Component {
               connectToDeviceHandler={this.connectToDevice}
             />
             <DevicesListButtons
-              addEditDevicesButtonPressHandler={this.addEditDevicesButtonPress}
+              enterDemoModeButtonPressHandler={this.enterDemoModeButtonPress}
             />
           </>
         }
@@ -552,4 +662,4 @@ class Devices extends Component {
 
 }
 
-export default connect(({ devices, logging }) => ({ devices, logging }))(Devices)
+export default connect(({ demo, devices, logging, sensorData }) => ({ demo, devices, logging, sensorData }))(Devices)

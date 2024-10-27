@@ -146,6 +146,7 @@ export default class BluetoothService {
           onDataReceivedHandler.call(this,responseStr)
         }}
       )
+      this.connectedDevice = device
     }
 
     this.manager.isDeviceConnected(device.id)
@@ -161,7 +162,6 @@ export default class BluetoothService {
           .then((device) => {
             console.log('requestConnectionPriorityForDevice, discovering...',device)
             // if (updateFn) updateFn.call(this,{ status: 'connected' })
-            // this.connectedDevice=device
             device.discoverAllServicesAndCharacteristics()
             .then((device) => {
               connectedDiscoveredAction()
@@ -209,17 +209,22 @@ export default class BluetoothService {
   }
 
   static disconnectConnectedDevice() {
-    //console.log('disconnectConnectedDevice')
-    if (!this.manager) return true
     const connectedDevice = this.connectedDevice
-    if (!connectedDevice) return
-    connectedDevice.cancelConnection()
-    .then((device) => {
-      //console.log('Disconnected')
-    })
-    .catch((error) => {
-      //console.log('CancelConnection Error')
-    })
+    if (connectedDevice) {
+      connectedDevice.cancelConnection()
+      .then((device) => {
+        //console.log('Disconnected')
+      })
+      .catch((error) => {
+        //console.log('CancelConnection Error')
+      })
+    }
+    if (this.manager) {
+      this.manager.connectedDevices()
+      .then((serviceUUIDs) => {
+        console.log("KKKKK connectedDevices",serviceUUIDs)
+      })
+    }
   }
 
   static disconnectConnectedRestartBle() {

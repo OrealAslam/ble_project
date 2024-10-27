@@ -17,7 +17,7 @@ class NepLinkHeader extends Component {
         />
       </View>
       <View style={{ paddingLeft: 20, paddingTop: 20 }}>
-        <Text style={{ fontSize: 20, fontWeight: 700}}>NEP-LINK</Text>
+        <Text style={{ fontSize: 20, fontWeight: 700}}>NEP-LINK BLE</Text>
         <Text style={{ fontSize: 16, fontWeight: 400}}>by Observator</Text>
       </View>
     </View>

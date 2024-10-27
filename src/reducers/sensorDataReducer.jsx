@@ -9,6 +9,8 @@ const initialState = {
   locationEnabled: true,
   locationLat: null,
   locationLng: null,
+  batteryVoltage: null,
+  batteryCharging: null,
 }
 
 export default function (state = initialState, action) {

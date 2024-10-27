@@ -7,8 +7,8 @@ class DevicesListButtons extends Component {
 
   renderBody = (props,state) => {
     return <View style={{ padding: 10, paddingTop: 0, width: '100%' }} >
-        <View style={{ padding: 10, width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
-          <Button size={'sm'} onPress={props.addEditDevicesButtonPressHandler.bind(this)}>Add/Edit Devices...</Button>
+        <View style={{ padding: 10, marginTop: 50, width: '100%', display: 'flex', flexDirection: 'row', justifyContent: 'flex-start', alignItems: 'center' }}>
+          <Button size={'sm'} onPress={props.enterDemoModeButtonPressHandler.bind(this)}>Open Demo Mode...</Button>
         </View>
       </View>
   }

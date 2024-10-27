@@ -5,7 +5,7 @@
  * @format
  */
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import type {PropsWithChildren} from 'react'
 import { useColorScheme, StyleSheet } from 'react-native'
 
@@ -19,6 +19,7 @@ const thunkMiddleware = require('redux-thunk').thunk
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
+import SplashScreen from 'react-native-splash-screen'
 
 import combinedReducer from './src/reducers/index.jsx'
 
@@ -36,7 +37,11 @@ const store = createStore(
 )
 
 function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+  const isDarkMode = useColorScheme() === 'dark'
+
+  useEffect(() => {
+    SplashScreen.hide()
+  }, [])
 
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,

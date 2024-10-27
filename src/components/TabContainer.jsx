@@ -3,7 +3,7 @@ import PropTypes from 'prop-types'
 import { Tab, Text, TabView } from '@rneui/themed'
 
 import DevicesNavigator from './Devices/Navigator.jsx'
-//import LoggingSessionsNavigator from './LoggingSessions/Navigator.jsx'
+import LoggingSessionsNavigator from './LoggingSessions/Navigator.jsx'
 import AboutPage from './About'
 
 export default () => {
@@ -16,8 +16,8 @@ export default () => {
           <DevicesNavigator />
         </TabView.Item>
         <TabView.Item style={{ width: '100%' }}>
-{/*          <LoggingSessionsNavigator />
-*/}        </TabView.Item>
+          <LoggingSessionsNavigator />
+        </TabView.Item>
         <TabView.Item style={{ width: '100%' }}>
           <AboutPage />
         </TabView.Item>
@@ -31,6 +31,9 @@ export default () => {
           height: 3,
         }}
         variant="primary"
+        style={{
+          paddingBottom: 40
+        }}
       >
         <Tab.Item
           title="Devices"

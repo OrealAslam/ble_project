@@ -1,34 +1,77 @@
 import React, { Component, useRef } from 'react'
 import PropTypes from 'prop-types'
-import { View, Text } from 'react-native'
+import { View, Text, StyleSheet } from 'react-native'
 import { Button } from '@rneui/themed'
-import {Picker} from '@react-native-picker/picker'
+import { Dropdown } from 'react-native-element-dropdown'
 
 const PickerCmp = (props) => {
 
-  const pickerRef = useRef()
+  const styles = StyleSheet.create({
+    container: {
+      padding: 10,
+      width: 200,
+    },
+    dropdown: {
+      height: 50,
+      borderColor: 'gray',
+      borderWidth: 0.5,
+      borderRadius: 8,
+      paddingHorizontal: 8,
+    },
+    icon: {
+      marginRight: 5,
+    },
+    label: {
+      position: 'absolute',
+      backgroundColor: 'white',
+      left: 22,
+      top: 8,
+      zIndex: 999,
+      paddingHorizontal: 8,
+      fontSize: 14,
+    },
+    placeholderStyle: {
+      fontSize: 16,
+    },
+    selectedTextStyle: {
+      fontSize: 14,
+    },
+    iconStyle: {
+      width: 20,
+      height: 20,
+    },
+    inputSearchStyle: {
+      height: 40,
+      fontSize: 16,
+    },
+  })
 
-  function open() {
-    pickerRef.current.focus()
+  const renderLabel = () => {
+    return (
+      <Text style={[styles.label, { color: 'blue' }]}>
+        Dropdown label
+      </Text>
+    )
   }
 
-  function close() {
-    pickerRef.current.blur()
-  }
-
-  const selectedLanguage = ''
-
-  return <Picker
-    ref={pickerRef}
-    style={{ width: 140, borderWidth: 2, borderColor: 'black' }}
-    onValueChange={(itemValue,itemIndex) => {
-      props.onValueChange.call(this,itemValue)
-    }}>
-    <Picker.Item label="Actions..." value="" />
-    <Picker.Item label="Email Data" value="email_data" />
-    {/*<Picker.Item label="Export Data" value="export_data" />*/}
-    <Picker.Item label="Delete Session" value="delete_session" />
-  </Picker>
+  return <View style={styles.container}>
+    <Dropdown
+      data={[
+        { label: 'Export Data', value: 'export_data' },
+        { label: 'Delete Session', value: 'delete_session' },
+      ]}
+      labelField="label"
+      valueField="value"
+      style={[styles.dropdown, { borderColor: 'blue' }]}
+      placeholderStyle={styles.placeholderStyle}
+      selectedTextStyle={styles.selectedTextStyle}
+      inputSearchStyle={styles.inputSearchStyle}
+      placeholder={'Actions...'}
+      onChange={item => {
+        props.onValueChange.call(this,item.value)
+      }}
+    />
+  </View>
 
 }
 
@@ -43,9 +86,6 @@ class ActionsMenu extends Component {
 
   onValueChangeHandler = (itemValue) => {
     switch (itemValue) {
-      case 'email_data':
-        this.props.emailDataHandler.call(this)
-        break
       case 'export_data':
         this.props.exportDataHandler.call(this)
          break
@@ -58,7 +98,7 @@ class ActionsMenu extends Component {
   }
 
   pickerMenu = (props) => {
-    return <View style={{ padding: 6, display: 'flex', alignItems: 'flex-end', borderWidth: 0 }}>
+    return <View style={{ padding: 6, display: 'flex', alignItems: 'flex-end' }}>
       <PickerCmp
         onValueChange={this.onValueChangeHandler}
       />

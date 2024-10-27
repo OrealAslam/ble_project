@@ -26,7 +26,7 @@ class LoggingSessions extends Component {
   componentDidUpdate() {
   }
 
-  componetWillUnmount() {
+  componentWillUnmount() {
   }
 
   routeToLoggingSessionsView = (loggingSessionId,formattedDateTime) => {

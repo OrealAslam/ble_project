@@ -9,13 +9,15 @@ import { v4 as uuidv4 } from 'uuid'
 import { launchCamera } from 'react-native-image-picker'
 import ViewShot, { captureRef } from 'react-native-view-shot'
 import { DateTime } from 'luxon'
-//import RNFS from 'react-native-fs'
+import RNFS from 'react-native-fs'
 
 import { startLogging, stopLogging, fetchLoggingSessions, saveLoggingSessionSamples } from '../../actions/LoggingActions'
 import { updateValues, resetValues, updateBatteryStatus } from '../../actions/SensorDataActions'
 import { setDeviceConnecting, setDeviceConnected, setDeviceDisconnecting, setDeviceDisconnected, clearConnectedDevice, setWiping,
   setSensorDataReceived, setSensorError, setDiscoveredDevices, setBondedDevices, addKnownDevices,
   fetchKnownDevices } from '../../actions/DeviceActions'
+
+import { setDemoModeEnabled } from '../../actions/DemoActions'
 
 import TakePhotoDialog from '../../components/Devices/TakePhotoDialog'
 import WaitingScreen from '../../components/Devices/WaitingScreen'
@@ -42,36 +44,30 @@ class DeviceView extends Component {
     this.mapViewRef = React.createRef()
   }
 
+  intervalId = null
+
   componentDidMount() {
-    console.log("XXX this.props",this.props)
-    console.log("XXX this.props.route",this.props.route)
-    console.log("XXX this.props.route?.params",this.props.route?.params)
-    const { navigation, devices } = this.props
-    this._navigationBeforeRemoveUnsubscribe = navigation.addListener("beforeRemove", (e) => {
-      const { logging } = this.props
-      if (logging.isLogging) {
-        e.preventDefault()
-        this.confirmAndEndLoggingAndConnection.call(this)
-      } else {
-        this.disconnectConnectedDevices.call(this)
-      }
-    })
-    this.appStateChangeSubscription = AppState.addEventListener("change", nextAppState => {
-      const { logging } = this.props
-      if (logging.isLogging && nextAppState === "background") {
-        this.confirmAndEndLoggingAndConnection.call(this)
-      }
-    })
 
-    const { deviceDataObj } = this.props.route.params
-    console.log("XXX deviceDataObj",deviceDataObj)
-    console.log("XXX deviceDataObj.id",deviceDataObj.id)
-    const deviceToConnect = devices.bondedDevicesRaw.find((o) => o.bleDevice.id === deviceDataObj.id)
-    console.log("XXX deviceToConnect",deviceToConnect)
+    const { navigation, devices, dataReceivedHandler } = this.props
 
-    BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onDataReceived)
-    // //this.disconnectSubscription = RNBluetoothClassic.onDeviceDisconnected(this.onDeviceDisconnected)
-    // BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onDataReceived)
+    // this._navigationBeforeRemoveUnsubscribe = navigation.addListener("beforeRemove", (e) => {
+    //   const { logging } = this.props
+    //   if (logging.isLogging) {
+    //     e.preventDefault()
+    //     this.confirmAndEndLoggingAndConnection.call(this)
+    //   } else {
+    //     this.disconnectConnectedDevices.call(this)
+    //   }
+    // })
+    // this.appStateChangeSubscription = AppState.addEventListener("change", nextAppState => {
+    //   const { logging } = this.props
+    //   if (logging.isLogging && nextAppState === "background") {
+    //     this.confirmAndEndLoggingAndConnection.call(this)
+    //   }
+    // })
+
+    // const { deviceDataObj } = this.props.route.params
+    // const deviceToConnect = deviceDataObj ? devices.bondedDevicesRaw.find((o) => o.bleDevice.id === deviceDataObj.id) : null
 
   }
 
@@ -92,9 +88,15 @@ class DeviceView extends Component {
   }
 
   componentWillUnmount() {
-    this._navigationBeforeRemoveUnsubscribe()
-    this.appStateChangeSubscription.remove()
-    this.disconnectSubscription.remove()
+    // this._navigationBeforeRemoveUnsubscribe()
+    // this.appStateChangeSubscription.remove()
+    BluetoothService.disconnectConnectedDevice()
+
+    if (this.props.demo.demoModeEnabled) {
+      this.props.dispatch(setDemoModeEnabled(false))
+    }
+
+
   }
 
   startLoggingHandler = () => {
@@ -103,101 +105,12 @@ class DeviceView extends Component {
     const connectedDevice = this.props.devices.device
     const { sensorData } = this.props
     const { turbidityEnabled, temperatureEnabled } = sensorData
-    const deviceId = connectedDevice.id
-    const deviceName = connectedDevice.name
+    const deviceId = connectedDevice?.bleDevice?.id || 'demo'
+    const deviceName = connectedDevice?.bleDevice?.name || 'DEMO'
     const timezoneName = DateTime.now().toFormat('z')
     const timezoneOffset = DateTime.now().toFormat('Z')
     this.props.dispatch(startLogging(loggingSessionId, deviceId, deviceName, timezoneName, timezoneOffset, turbidityEnabled, temperatureEnabled ))
     this.takeMapImageCapture()
-  }
-
-
-  onDataReceived = (responseStr) => {
-
-    const { props } = this
-    const { dispatch, devices, logging } = props
-
-    console.log("XXX responseStr",responseStr)
-
-    const probesEnabled = []
-    const probeDataMatch = responseStr.match(/(R\d),(\d+\.\d+),?(\d+\.\d+)?/)
-    const statsMatch = responseStr.match(/~,stats,(\d+),(\d)/)
-
-    if (!probeDataMatch && !statsMatch) {
-      console.log("XXX UNMATCHED responseStr")
-      console.log("XXX data is",responseStr)
-      let responseStr = responseStr.split('')
-      responseStr.forEach((char) => {
-        console.log(char,char.charCodeAt(0))
-      })
-    }
-
-    if (probeDataMatch) {
-      console.log("XXX probeDataMatch",probeDataMatch)
-      let turbidityEnabled = false
-      let turbidityValue = null
-      let temperatureEnabled = false
-      let temperatureValue = null
-      let rangeLabel
-
-      const probeSetting = probeDataMatch[1]
-
-      if (probeSetting=="R1") {
-        rangeLabel = "Low range"
-      } else if (probeSetting=="R2") {
-        rangeLabel = "Medium range"
-      } else if (probeSetting=="R3") {
-        rangeLabel = "High range"
-      }
-
-      if (probeDataMatch[2]) {
-        turbidityEnabled = true
-        turbidityValue = parseFloat(probeDataMatch[2])
-      }
-      if (probeDataMatch[3] && (parseFloat(probeDataMatch[3]) > 0)) {
-        temperatureEnabled = true
-        temperatureValue = parseFloat(probeDataMatch[3])
-      }
-      const sampleDateObj = DateTime.now() //DateTime.fromMillis(Date.parse(event.timestamp))
-      const tzOffsetStr = sampleDateObj.toFormat('Z')
-      const tzOffsetMs = parseInt(tzOffsetStr) * 1000 * 60 * 60
-      const dataObjTimestamp = sampleDateObj.toFormat('x') - tzOffsetMs
-      dispatch(updateValues({
-        probeSetting,
-        rangeLabel,
-        temperatureEnabled,
-        turbidityEnabled,
-        turbidityValue,
-        temperatureValue,
-        locationEnabled: this.state.locationEnabled,
-        locationLat: this.state.locationLat,
-        locationLng: this.state.locationLng,
-        sampleDateObj,
-      }))
-      if (logging.isLogging) {
-        const loggingSessionId = logging.loggingSessionId
-        const dataObj = {
-          loggingSessionId: logging.loggingSessionId,
-          timestamp: dataObjTimestamp,
-          turbidityValue,
-          temperatureValue,
-          locationLat: this.state.locationLat,
-          locationLng: this.state.locationLng,
-        }
-        dispatch(addDataToLoggingSession(loggingSessionId,dataObj))
-      }
-      if (devices.wiping) dispatch(setWiping(false))
-      if (devices.sensorError) dispatch(setSensorError(false))
-      if (!devices.sensorDataReceived) dispatch(setSensorDataReceived(true))
-    } else if (statsMatch) {
-      console.log("XXX statsMatch",statsMatch)
-      const batteryVoltage = parseFloat(statsMatch[1])
-      const batteryCharging = (statsMatch[2]==1) ? true : false
-      dispatch(updateBatteryStatus({
-        batteryVoltage,
-        batteryCharging,
-      }))
-    }
   }
 
   takeMapImageCapture = () => {
@@ -432,4 +345,4 @@ class DeviceView extends Component {
 
 }
 
-export default connect(({ devices, sensorData, logging }) => ({ devices, sensorData, logging }))(DeviceView)
+export default connect(({ demo, devices, sensorData, logging }) => ({ demo, devices, sensorData, logging }))(DeviceView)

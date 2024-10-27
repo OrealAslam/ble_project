@@ -2,13 +2,10 @@ import React, { Component } from 'react'
 import PropTypes from 'prop-types'
 import { SafeAreaView, ScrollView } from 'react-native'
 
-// import RNBluetoothClassic from 'react-native-bluetooth-classic'
 import { CommonActions } from '@react-navigation/native'
 import { connect } from 'react-redux'
 
 import AddEditDevicesList from '../../components/Devices/AddEditDevicesList'
-import PairDeviceDialog from '../../components/Devices/PairDeviceDialog'
-import HeaderRightAddDeviceButton from '../../components/Devices/HeaderRightAddDeviceButton'
 
 import { addBondedDevice } from '../../actions/DeviceActions'
 
@@ -87,18 +84,7 @@ class AddEditDevicesView extends Component {
 
   renderBody = (props,state) => {
     const { devices } = props
-    console.log("PPP devices.bondedDevicesFormatted",devices.bondedDevicesFormatted)
     return <SafeAreaView>
-      <PairDeviceDialog
-        unpairedDevices={devices.unpairedDevices}
-        deviceIdNameHash={devices.deviceIdNameHash}
-        isVisible={this.state.pairDeviceDialogVisible}
-        isPairing={this.state.isPairing}
-        pairingFailed={this.state.pairingFailed}
-        pairingWithDevice={this.state.pairingWithDevice}
-        closeDialog={this.closeAddPairedDeviceDialog}
-        pairWithDeviceHandler={this.pairWithDevice}
-      />
       <ScrollView>
         <AddEditDevicesList
           bondedDevices={devices.bondedDevicesFormatted}

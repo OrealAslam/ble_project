@@ -1,4 +1,4 @@
-package com.observatorneplinkble
+package com.observator.neplinkble
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate

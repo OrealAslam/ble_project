@@ -49,15 +49,13 @@ class Devices extends Component {
 
     BluetoothService.init()
 
-    //this.disconnectSubscription //= RNBluetoothClassic.onDeviceDisconnected(this.onDeviceDisconnected)
-    // this.onDataReceivedSubscription = null
-
-    // this.bluetoothEnabledSubscription //= RNBluetoothClassic.onBluetoothEnabled(this.onBluetoothStateChange)
-    // this.bluetoothDisabledSubscription //= RNBluetoothClassic.onBluetoothDisabled(this.onBluetoothStateChange)
-
     await this.getBluetoothPermissionsAndStartBluetoothProcesses.call(this)
     this.locationUpdate.call(this)
 
+  }
+
+  startScan = () => {
+    console.log("XXX startScan")
     BluetoothService.startScan(() => {
       console.log("XXX bluetoothStateFunction")
     },
@@ -65,14 +63,34 @@ class Devices extends Component {
       console.log("XXX updateFunction",devicesFound)
       this.updateBondedDevices(devicesFound)
     })
-
   }
 
   getBluetoothPermissionsAndStartBluetoothProcesses = async () => {
 
-    let fineLocationPermission = true
+   let fineLocationPermission = true
       bluetoothScanPermission = true,
       bluetoothConnectPermission = true
+
+    if (Platform.OS === 'android') {
+      if (Platform.Version < 31) {
+        fineLocationPermission = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+        ).catch(error => {
+          console.log("XXX can't run PermissionsAndroid.request PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION",error)
+        })
+      } else {
+        const requestMultiplePermissionsResult = await PermissionsAndroid.requestMultiple([
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+          PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        ])
+        if (!requestMultiplePermissionsResult) {
+          fineLocationPermission = false
+          bluetoothScanPermission = false
+          bluetoothConnectPermission = false
+        }
+      }
+    }
 
     if (bluetoothScanPermission && bluetoothConnectPermission && fineLocationPermission) {
       if (!this.state.bluetoothPermissions) {
@@ -87,9 +105,16 @@ class Devices extends Component {
       return false
     }
 
+    console.log("KKK getBluetoothPermissionsAndStartBluetoothProcesses passed")
+    console.log("KKK fineLocationPermission",fineLocationPermission)
+    console.log("KKK bluetoothScanPermission",bluetoothScanPermission)
+    console.log("KKK bluetoothConnectPermission",bluetoothConnectPermission)
+
+    this.startScan.call(this)
+
   }
 
-  componentDidUpdate(prevState,prevProps) {
+  componentDidUpdate(prevProps,prevState) {
 
     const { logging, dispatch, demo } = this.props
     const { loggingSessionId, loggingSessionSamples } = logging
@@ -107,14 +132,22 @@ class Devices extends Component {
       },1000)
     }
 
-    if ((demo.demoModeEnabled === false) && this.intervalId) clearInterval(this.intervalId)
+    if (prevProps.demo.demoModeEnabled && (demo.demoModeEnabled === false)) {
+
+      this.currentTurbidityValue = null
+      this.currentTemperatureValue = null
+
+      this.setState({ demoModeEnabled: false })
+
+      this.props.dispatch(resetValues())
+
+    }
+
+    if (!demo.demoModeEnabled && this.intervalId) clearInterval(this.intervalId)
 
   }
 
   componentWillUnmount() {
-    // console.log("XXX Devices componentWillUnmount")
-    //this.disconnectSubscription.remove()
-    //if (this.onDataReceivedSubscription) this.onDataReceivedSubscription.remove()
     this.props.dispatch(resetValues())
   }
 
@@ -127,11 +160,8 @@ class Devices extends Component {
 
     this.locationUpdateId = setInterval(async () => {
 
-      console.log("KKK locationUpdate setInterval 1")
-      // console.log("XXX locationUpdate running PermissionsAndroid.request")
       const permissionsAndroidGranted = (Platform.OS === "android") ? await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION) : null
-            // console.log("XXX locationUpdate finished running PermissionsAndroid.request",permissionsAndroidGranted)
-      // console.log("XXX locationUpdate running RNLocation.requestPermission")
+
       const requestPermissionResponse = await RNLocation.requestPermission({
         ios: "whenInUse",
         android: {
@@ -145,9 +175,14 @@ class Devices extends Component {
       console.log("KKK locationUpdate finished RNLocation.requestPermission",requestPermissionResponse)
       // console.log("XXX locationUpdate running RNLocation.configure")
       console.log("KKK locationUpdate setInterval 2")
-      await RNLocation.configure({
-          distanceFilter: 5.0
+      const cret = RNLocation.configure({
+          distanceFilter: 5.0,
+          desiredAccuracy: {
+            ios: "nearestTenMeters",
+            android: "balancedPowerAccuracy"
+          }
         })
+
       console.log("KKK locationUpdate setInterval 3")
       const getCurrentPermissionResponse = await RNLocation.getCurrentPermission()
       console.log("KKK locationUpdate finished checking location permission",getCurrentPermissionResponse)
@@ -208,7 +243,7 @@ class Devices extends Component {
         }
       })
 
-    },10000)
+    },30000)
 
   }
 
@@ -303,8 +338,7 @@ class Devices extends Component {
       return
     }
     this.setState({ awaitingDevice: false, connectingDevice: deviceToConnect, connectedDevice: null })
-    //BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onDataReceived)
-    BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onDataReceived)
+    BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onSensorDataReceived,this.onBatteryDataReceived,this.onDeviceDisconnected)
     dispatch(setDeviceConnected(deviceToConnect))
     const routeToDeviceView = CommonActions.navigate({
       name: 'DeviceView',
@@ -316,7 +350,21 @@ class Devices extends Component {
     this.props.navigation.dispatch(routeToDeviceView)
   }
 
-  onDataReceived = (responseStr) => {
+  onBatteryDataReceived = (batteryDataObj) => {
+    const { props } = this
+    const { dispatch, devices, logging } = props
+
+    const rawBatteryLevel = !isNaN(batteryDataObj['percentage']) ? parseInt(batteryDataObj['percentage']) : 0
+    const batteryLevel = (rawBatteryLevel > 0) ? rawBatteryLevel : 0
+    const batteryCharging = (batteryDataObj['percentage'] === "Charging")
+    dispatch(updateBatteryStatus({
+      batteryLevel,
+      batteryCharging,
+    }))
+
+  }
+
+  onSensorDataReceived = (responseStr) => {
 
     const { props } = this
     const { dispatch, devices, logging } = props
@@ -358,7 +406,7 @@ class Devices extends Component {
         turbidityEnabled = true
         turbidityValue = parseFloat(probeDataMatch[2])
       }
-      if (probeDataMatch[3] && (parseFloat(probeDataMatch[3]) > 0)) {
+      if (probeDataMatch[3] && (parseFloat(probeDataMatch[3]) > -100)) {
         temperatureEnabled = true
         temperatureValue = parseFloat(probeDataMatch[3])
       }
@@ -395,14 +443,17 @@ class Devices extends Component {
       if (!devices.sensorDataReceived) dispatch(setSensorDataReceived(true))
     } else if (statsMatch) {
       console.log("XXX statsMatch",statsMatch)
-      const batteryVoltage = parseFloat(statsMatch[1])
+      const batteryLevel = parseFloat(statsMatch[1])
       const batteryCharging = (statsMatch[2]==1) ? true : false
       dispatch(updateBatteryStatus({
-        batteryVoltage,
+        batteryLevel,
         batteryCharging,
       }))
     }
   }
+
+  currentTurbidityValue = null
+  currentTemperatureValue = null
 
   createDemoDataReading = () => {
 
@@ -417,17 +468,31 @@ class Devices extends Component {
     let probeSetting
     let rangeLabel
 
-    const turbidityRangeMin = 5
-    const turbidityRangeMax = 5000
-    turbidityValue = Math.round((((turbidityRangeMax-turbidityRangeMin) * Math.random()) + turbidityRangeMin) * 100) / 100
+    if (this.currentTurbidityValue === null) {
+      const turbidityRangeMin = 5
+      const turbidityRangeMax = 5000
+      turbidityValue = Math.round((((turbidityRangeMax-turbidityRangeMin) * Math.random()) + turbidityRangeMin) * 100) / 100
+    } else {
+      const turbidityAdjustFactor = Math.random()
+      const turbidityAdjust = (300 * turbidityAdjustFactor) - 150
+      turbidityValue = this.currentTurbidityValue + turbidityAdjust
+      turbidityValue = Math.round(turbidityValue * 100)/100
+    }
 
+    this.currentTurbidityValue = turbidityValue
 
-    const temperatureRangeMin = 5
-    const temperatureRangeMax = 35
-    temperatureValue = Math.round((((temperatureRangeMax-temperatureRangeMin) * Math.random()) + temperatureRangeMin) * 10) / 10
+    if (this.currentTemperatureValue === null) {
+      const temperatureRangeMin = 5
+      const temperatureRangeMax = 35
+      temperatureValue = Math.round((((temperatureRangeMax-temperatureRangeMin) * Math.random()) + temperatureRangeMin) * 10) / 10
+    } else {
+      const temperatureAdjustFactor = Math.random()
+      const temperatureAdjust = (4 * temperatureAdjustFactor) - 2
+      temperatureValue = this.currentTemperatureValue + temperatureAdjust
+      temperatureValue = Math.round(temperatureValue * 10)/10
+    }
 
-    console.log("XXX turbidityValue",turbidityValue)
-    console.log("XXX temperatureValue",temperatureValue)
+    this.currentTemperatureValue = temperatureValue
 
     probeSetting=="R3"
     rangeLabel = "High range"
@@ -474,25 +539,21 @@ class Devices extends Component {
     if (devices.wiping) dispatch(setWiping(false))
     if (!devices.sensorDataReceived) dispatch(setSensorDataReceived(true))
 
-    if (!sensorData.batteryVoltage) {
+    if (!sensorData.batteryLevel) {
       const batteryLevelRangeMin = 60
       const batteryLevelRangeMax = 100
-      batteryVoltage = Math.round(((batteryLevelRangeMax-batteryLevelRangeMin) * Math.random()) + batteryLevelRangeMin)
+      batteryLevel = Math.round(((batteryLevelRangeMax-batteryLevelRangeMin) * Math.random()) + batteryLevelRangeMin)
       dispatch(updateBatteryStatus({
-        batteryVoltage,
+        batteryLevel,
         batteryCharging: false,
       }))
     }
 
   }
 
-  onDeviceDisconnected = (event: BluetoothDeviceEvent) => {
-    const { devices } = this.props
+  onDeviceDisconnected = () => {
     console.log("XXX Devices onDeviceDisconnected")
-    const { dispatch } = this.props
-    // if (this.onDataReceivedSubscription) {
-    //   this.onDataReceivedSubscription.remove()
-    // }
+    const { devices, dispatch, navigation } = this.props
     const { connectedDevice } = this.state
     if (connectedDevice) {
       const deviceDataObj = devices.bondedDevicesFormatted.find((o) => o.address === connectedDevice.address)
@@ -501,88 +562,12 @@ class Devices extends Component {
       dispatch(clearConnectedDevice())
     }
     dispatch(resetValues())
-  }
-
-  startDiscovery = async () => {
-    RNBluetoothClassic.startDiscovery()
-      .then((discoveredDevices) => {
-        console.log("XXX startDiscovery",discoveredDevices)
-        this.props.dispatch(setDiscoveredDevices(discoveredDevices))
-        setTimeout(() => {
-          try {
-            RNBluetoothClassic.cancelDiscovery()
-            .then(() => {
-              console.log("cancelDiscovery then 1")
-              setTimeout(() => {
-                this.startDiscovery.call(this)
-              },5000)
-            })
-            .catch(() => {
-              console.log("cancelDiscovery catch 1")
-            })
-          } catch(error) {
-            console.log("XXX RNBluetoothClassic.cancelDiscovery error 1",error)
-          }
-        },30000)
-      })
-      .catch((error1) => {
-        console.log("XXX can't start discovery 1",error1)
-        setTimeout(() => {
-          this.startDiscovery.call(this)
-        },2000)
-
-        // try {
-        //   RNBluetoothClassic.cancelDiscovery()
-        //   .then(() => {
-        //     console.log("XXX catch -> cancelDiscovery then")
-        //     setTimeout(() => {
-        //       this.startDiscovery.call(this)
-        //     },2000)
-        //   })
-        //   .catch((error) => {
-        //     console.log("XXX catch -> cancelDiscovery catch")
-        //     this.setState({ bluetoothEnabled: false })
-        //     setTimeout(() => {
-        //       this.startDiscovery.call(this)
-        //     },2000)
-        //   })
-        // } catch(error) {
-        //   console.log("XXX RNBluetoothClassic.cancelDiscovery error 2",error)
-        // }
-      })
+    if (navigation.canGoBack()) navigation.goBack()
+    console.log("XXX Devices onDeviceDisconnected DONE")
   }
 
   deviceDisconnect = () => {
     const { dispatch } = this.props
-    const { connectedDevice } = this.state
-    if (connectedDevice) {
-      this.setState({
-        connectingDevice: null,
-        connectedDevice: null,
-        connectionAttemptStarted: false,
-      })
-      dispatch(clearConnectedDevice())
-      connectedDevice.disconnect()
-        .then((connection) => {
-          console.log("XXX disconnect 2",connection)
-        })
-        .catch(error => {
-          console.log("Couldn't disconnect 2",error)
-        })
-    } else {
-      RNBluetoothClassic.getConnectedDevices()
-      .then((connected) => {
-        connected.forEach((deviceToDisconnect) => {
-          deviceToDisconnect.disconnect()
-            .then((connection) => {
-              console.log("XXX disconnect 3",connection)
-            })
-            .catch(error => {
-              console.log("Couldn't disconnect 3",error)
-            })
-        })
-      })
-    }
   }
 
   cancelConnectToDevice = () => {
@@ -607,6 +592,7 @@ class Devices extends Component {
       params: {
         deviceDataObj: null,
         demoModeEnabled: true,
+        //deviceName: "NEP-LINK BLE",
         deviceName: "DEMO",
       }
     })
@@ -645,6 +631,7 @@ class Devices extends Component {
           <>
             <DevicesList
               bondedDevices={devices.bondedDevicesFormatted}
+              //bondedDevices={[{ name: 'NEP-LINK BLE', id: 'demo', inRange: true}]}
               connectToDeviceHandler={this.connectToDevice}
             />
             <DevicesListButtons

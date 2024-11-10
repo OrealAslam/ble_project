@@ -19,11 +19,11 @@ class LocationNotFound extends Component {
         message = "Searching for location..."
       }
 
-      return <View style={{ borderColor: '#AAA', borderWidth: 1 }} >
+      return <View style={{ borderColor: '#CCC', borderWidth: 2, borderRadius: 10 }} >
         <View
           style={{
-            minHeight: 150,
-            height: 150,
+            minHeight: 300,
+            height: 300,
             width: '100%',
             padding: 20,
             backgroundColor: "#CCC",

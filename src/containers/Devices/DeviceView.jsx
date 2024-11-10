@@ -47,47 +47,28 @@ class DeviceView extends Component {
   intervalId = null
 
   componentDidMount() {
-
     const { navigation, devices, dataReceivedHandler } = this.props
-
-    // this._navigationBeforeRemoveUnsubscribe = navigation.addListener("beforeRemove", (e) => {
-    //   const { logging } = this.props
-    //   if (logging.isLogging) {
-    //     e.preventDefault()
-    //     this.confirmAndEndLoggingAndConnection.call(this)
-    //   } else {
-    //     this.disconnectConnectedDevices.call(this)
-    //   }
-    // })
-    // this.appStateChangeSubscription = AppState.addEventListener("change", nextAppState => {
-    //   const { logging } = this.props
-    //   if (logging.isLogging && nextAppState === "background") {
-    //     this.confirmAndEndLoggingAndConnection.call(this)
-    //   }
-    // })
-
-    // const { deviceDataObj } = this.props.route.params
-    // const deviceToConnect = deviceDataObj ? devices.bondedDevicesRaw.find((o) => o.bleDevice.id === deviceDataObj.id) : null
-
   }
 
   componentDidUpdate() {
 
     const { navigation, sensorData } = this.props
     const batteryCharging = sensorData.batteryCharging
-    const batteryVoltage = sensorData.batteryVoltage || 0
+    const batteryLevel = sensorData.batteryLevel || 0
 
     navigation.setOptions({
       headerRight: () => (
         <HeaderRightBatteryIndicator
           batteryCharging={batteryCharging}
-          batteryVoltage={batteryVoltage}
+          batteryLevel={batteryLevel}
         />
       )
     })
   }
 
   componentWillUnmount() {
+
+    console.log("XXXX componentWillUnmount")
     // this._navigationBeforeRemoveUnsubscribe()
     // this.appStateChangeSubscription.remove()
     BluetoothService.disconnectConnectedDevice()
@@ -95,7 +76,6 @@ class DeviceView extends Component {
     if (this.props.demo.demoModeEnabled) {
       this.props.dispatch(setDemoModeEnabled(false))
     }
-
 
   }
 
@@ -199,40 +179,6 @@ class DeviceView extends Component {
     )
   }
 
-  onDeviceDisconnected = (event: BluetoothDeviceEvent) => {
-    const { dispatch, logging, navigation } = this.props
-    const { loggingSessionId, loggingSessionSamples } = logging
-    if (logging.isLogging) {
-      this.setState({ isLogging: false, loggingSessionSamples: [] })
-      dispatch(stopLogging())
-      this.disconnectConnectedDevices.call(this)
-      this.takeMapImageCapture()
-      dispatch(fetchLoggingSessions())
-      dispatch(saveLoggingSessionSamples(loggingSessionId,loggingSessionSamples))
-      this.setState({ showTakePhotoDialog: true, goBackAfterPhoto: true })
-    } else {
-      this.disconnectConnectedDevices.call(this)
-      navigation.goBack()
-    }
-  }
-
-  disconnectConnectedDevices = async () => {
-
-    // await RNBluetoothClassic.getConnectedDevices()
-    // .then((connected) => {
-    //   connected.forEach((deviceToDisconnect) => {
-    //     deviceToDisconnect.disconnect()
-    //       .then((connection) => {
-    //         console.log("XXX DeviceView disconnect 1",connection)
-    //       })
-    //       .catch(error => {
-    //         console.log("XXX DeviceView Error - Couldn't disconnect 1",error)
-    //       })
-    //   })
-    // })
-
-  }
-
   stopLoggingHandler = () => {
     const { dispatch, logging } = this.props
     const { loggingSessionId, loggingSessionSamples } = logging
@@ -247,14 +193,13 @@ class DeviceView extends Component {
     this.setState({ showTakePhotoDialog: false })
   }
 
-  launchCamera = async () => {
-    this.setState({ showTakePhotoDialog: false })
-    const options = {}
+  execLaunchCamera = async () => {
+    const options = { cameraType: 'back' }
     await launchCamera(options, async response => {
       if (response.didCancel) {
         console.log("XXX launchCamera cancelled")
       } else if (response.error) {
-        console.log('Camera Error', response.error)
+        console.log('XXX launchCamera Camera Error', response.error)
       } else {
         const loggingSessionId = this.state.loggingSessionId
         const timestamp = this.props.logging.loggingSession.timestamp
@@ -265,17 +210,18 @@ class DeviceView extends Component {
             const filePath = `${dirName}/NEP-Link-image-${dateTime.toFormat("dd-LLL-yyyy_HHmmss")}.jpg`
             RNFS.copyFile(response.assets[0].uri,filePath)
               .then(() => {
-                console.log("XXX copyFile complete",filePath)
+                console.log("XXX launchCamera copyFile complete",filePath)
               })
               .catch(error => {
-                console.log(`XXX copyFile of ${filePath} failed`,error)
+                console.log(`XXX launchCamera copyFile of ${filePath} failed`,error)
               })
           })
           .catch( error => {
-            console.log("XXX error RNFS.mkdir",error)
+            console.log("XXX launchCamera error RNFS.mkdir",error)
           })
       }
     })
+    this.setState({ showTakePhotoDialog: false })
     if (this.state.goBackAfterPhoto) {
       this.props.navigation.goBack()
     }
@@ -302,7 +248,7 @@ class DeviceView extends Component {
         visible={state.showTakePhotoDialog}
         closeDialog={this.closeTakePhotoDialog}
         showTakePhotoComponent={this.showTakePhotoComponent}
-        launchCamera={this.launchCamera}
+        launchCamera={this.execLaunchCamera}
       />
       <ScrollView>
         <LiveValues

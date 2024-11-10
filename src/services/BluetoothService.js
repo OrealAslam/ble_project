@@ -14,9 +14,8 @@ export default class BluetoothService {
     this.bluetoothStateFunction = null
     this.updateFunction = null
     this.serviceIdsArray = [
-      '0000180a-0000-1000-8000-00805f9b34fb',
-      '569a1101-b87f-490c-92cb-11ba5ea5167c',
-      '569a2000-b87f-490c-92cb-11ba5ea5167c',
+      "c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b",
+      "86a324aa-4b2f-46c7-b4d8-949cae59e6d7",
     ]
     this.manager = new BleManager()
 
@@ -73,7 +72,10 @@ export default class BluetoothService {
     this.bleDevicesFound = []
 
     const scanFn = () => {
-      this.manager.startDeviceScan(null, { allowDuplicates: true, scanMode: ScanMode.LowLatency }, (error, device) => {
+      this.manager.startDeviceScan(null, { allowDuplicates: false, scanMode: ScanMode.LowLatency }, (error, device) => {
+
+        // console.log("XXX device",device)
+        // console.log("XXX error",error)
 
         if (error) {
           return //console.log('ERROR', error)
@@ -85,8 +87,8 @@ export default class BluetoothService {
 
         this.bleDevicesFound = this.bleDevicesFound.filter(({timestamp}) => (timestamp > (new Date().getTime() - 20000)))
 
-        if (device.name?.match(/NEP-LINK/)) {
-          //["serviceData", "isConnectable", "id", "solicitedServiceUUIDs", "manufacturerData", "serviceUUIDs", "overflowServiceUUIDs", "txPowerLevel", "rssi", "mtu", "rawScanRecord", "name", "localName", "_manager"]
+        if (device.name?.match(/NEP-LINK|MET-LINK/)) {
+          ["serviceData", "isConnectable", "id", "solicitedServiceUUIDs", "manufacturerData", "serviceUUIDs", "overflowServiceUUIDs", "txPowerLevel", "rssi", "mtu", "rawScanRecord", "name", "localName", "_manager"]
           // console.log("XXX device.localName",device.localName)
           // console.log("XXX device.serviceData",device.serviceData)
           // console.log("XXX device.isConnectable",device.isConnectable)
@@ -129,7 +131,8 @@ export default class BluetoothService {
     this.manager.stopDeviceScan()
   }
 
-  static connectAndListen = (device,onDataReceivedHandler) => {
+
+  static connectAndListen = (device,onSensorDataReceivedHandler,onBatteryDataReceivedHandler,onDeviceDisconnectedHandler=undefined) => {
 
     console.log("XXX connectAndListen device",device)
 
@@ -140,14 +143,41 @@ export default class BluetoothService {
       (error,characteristic) => {
         if (characteristic) {
           this.stopScan()
-          console.log("XXXX characteristic.value",characteristic.value)
+          //console.log("XXXX DATA characteristic.value",characteristic.value)
           const responseStr = base64.decode(characteristic.value)
-          console.log("XXXX responseStr",responseStr)
-          onDataReceivedHandler.call(this,responseStr)
+          console.log("XXXX DATA responseStr",responseStr)
+          onSensorDataReceivedHandler.call(this,responseStr)
+        }}
+      )
+
+      device.monitorCharacteristicForService(
+      "86a324aa-4b2f-46c7-b4d8-949cae59e6d7",
+      "266b64b4-19ee-4941-8253-650b4d7ab197",
+      (error,characteristic) => {
+        if (characteristic) {
+          this.stopScan()
+          const batteryReponseJsonStr = base64.decode(characteristic.value)
+          console.log("XXXX BATTERY batteryReponseJsonStr",batteryReponseJsonStr)
+          try {
+            const batteryDataObj = JSON.parse(batteryReponseJsonStr)
+            onBatteryDataReceivedHandler.call(this,batteryDataObj)
+          } catch (e) {
+            console.log('Error in processing batteryReponseJsonStr and calling onSensorDataReceivedHandler', e)
+          }
         }}
       )
       this.connectedDevice = device
     }
+
+    this.manager.onDeviceDisconnected(device.id,(error, device) => {
+      console.log("XXX onDeviceDisconnected error",error)
+      console.log("XXX onDeviceDisconnected device",device)
+      if (onDeviceDisconnectedHandler !== undefined) {
+        onDeviceDisconnectedHandler()
+      } else {
+        console.log("XXX onDeviceDisconnectedHandler is undefined")
+      }
+    })
 
     this.manager.isDeviceConnected(device.id)
     .then(isConnected => {
@@ -165,23 +195,6 @@ export default class BluetoothService {
             device.discoverAllServicesAndCharacteristics()
             .then((device) => {
               connectedDiscoveredAction()
-
-              // device.services()
-              // .then((services) => {
-              //   services.forEach((service) => {
-              //     console.log("XXX service",service)
-              //     service.characteristics()
-              //     .then(characteristics => {
-              //       characteristics.forEach((characteristic) => {
-              //         console.log("XXX service.uuid",service.uuid)
-              //         console.log("XXX service keys",Object.keys(service))
-              //         console.log("XXX characteristic uuid",characteristic.uuid)
-              //         console.log("XXX characteristic keys",Object.keys(characteristic))
-              //       })
-              //     })
-              //   })
-              // })
-              //connectedDiscoveredAction()
             })
             .catch((error) => {
               //console.log('Error on discoverAllServicesAndCharacteristics',error)
@@ -209,21 +222,18 @@ export default class BluetoothService {
   }
 
   static disconnectConnectedDevice() {
-    const connectedDevice = this.connectedDevice
-    if (connectedDevice) {
-      connectedDevice.cancelConnection()
-      .then((device) => {
-        //console.log('Disconnected')
-      })
-      .catch((error) => {
-        //console.log('CancelConnection Error')
+    if (this.manager) {
+      this.manager.connectedDevices(this.serviceIdsArray)
+      .then((devices) => {
+        console.log("KKKKK connectedDevices",devices)
+        devices.forEach((device) => {
+          device.cancelConnection()
+        })
       })
     }
-    if (this.manager) {
-      this.manager.connectedDevices()
-      .then((serviceUUIDs) => {
-        console.log("KKKKK connectedDevices",serviceUUIDs)
-      })
+    if (this.connectedDevice) {
+      this.connectedDevice.cancelConnection()
+      this.connectedDevice = null
     }
   }
 

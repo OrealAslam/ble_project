@@ -12,13 +12,13 @@ export default () => {
   return (
     <>
       <TabView value={index} onChange={setIndex} animationType="spring" disableSwipe={true}>
-        <TabView.Item style={{ width: '100%' }}>
+        <TabView.Item style={{ width: '100%', backgroundColor: 'white' }}>
           <DevicesNavigator />
         </TabView.Item>
-        <TabView.Item style={{ width: '100%' }}>
+        <TabView.Item style={{ width: '100%', backgroundColor: 'white' }}>
           <LoggingSessionsNavigator />
         </TabView.Item>
-        <TabView.Item style={{ width: '100%' }}>
+        <TabView.Item style={{ width: '100%', backgroundColor: 'white' }}>
           <AboutPage />
         </TabView.Item>
       </TabView>
@@ -32,7 +32,7 @@ export default () => {
         }}
         variant="primary"
         style={{
-          paddingBottom: 40
+          paddingBottom: 40,
         }}
       >
         <Tab.Item

@@ -122,9 +122,9 @@ class LoggingSessionView extends Component {
     const commentRows = (comment || '').split('\n')
     commentIterator = 0
     loggingSessionSamples.forEach((item) => {
-      const timestamp = Math.round(item.timestamp/1000)*1000
-      const dateTimeOptions = { zone: `UTC` }
-      const dateTime = DateTime.fromMillis(timestamp,dateTimeOptions).setZone(`UTC${timezoneOffset}`)
+      const timestamp = Math.round(item.timestamp/1000)*1000 + (timezoneOffset * 60 * 60 * 1000)
+      const dateTimeOptions = { zone: `UTC${timezoneOffset}` }
+      const dateTime = DateTime.fromMillis(timestamp,dateTimeOptions)
       const dateStr = dateTime.toFormat("dd LLL yyyy")
       const timeStr = dateTime.toFormat("HH:mm:ss")
       csvArray.push([
@@ -135,7 +135,7 @@ class LoggingSessionView extends Component {
         item.turbidityValue,
         item.temperatureValue,
         ,
-        commentRows[commentIterator]
+        commentRows[commentIterator],
       ].join(','))
       commentIterator++
     })
@@ -231,11 +231,12 @@ class LoggingSessionView extends Component {
 
     }
 
-    const mailSubject = `NEP-Link Files for logging session at ${dateTime.toFormat("dd-LLL-yyyy HH:mm:ss")}`
-    const mailBody = `<p>Hello,</p><p>Here are your files for the logging session conducted at ${dateTime.toFormat("dd-LLL-yyyy HH:mm:ss")}.</p>`
+    const mailSubject = `NEP-LINK Files for logging session at ${dateTime.toFormat("dd-LLL-yyyy HH:mm:ss")}`
+    const mailBody = `Hello, Here are your files for the NEP-LINK logging session conducted at ${dateTime.toFormat("dd-LLL-yyyy HH:mm:ss")}.`
 
     Share.open({
       title: mailSubject,
+      subject: mailSubject,
       message: mailBody,
       urls: attachmentUrlsArray,
       filenames: attachmentFilenamesArray,
@@ -244,17 +245,14 @@ class LoggingSessionView extends Component {
   }
 
   deleteSession = (action='showConfirmationDialog') => {
-
     if (action==='showConfirmationDialog') {
       return this.setState({ deleteSessionDialogVisible: true })
     } else if (action==='cancel') {
       return this.setState({ deleteSessionDialogVisible: false })
     }
-
     this.props.navigation.goBack()
     const { loggingSession } = this.props.logging
     this.props.dispatch(deleteLoggingSession(loggingSession.id))
-
   }
 
   commentDialogOnChangeText = (value) => {

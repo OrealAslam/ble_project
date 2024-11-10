@@ -1,6 +1,29 @@
 import React, { Component } from 'react'
 import PropTypes from 'prop-types'
-import { Text, View, TouchableOpacity } from 'react-native'
+import { Text, View, TouchableOpacity, Dimensions } from 'react-native'
+
+const fontSizeHash = {
+  singleView: {
+    largeScreen: 60,
+    mediumScreen: 50,
+    smallScreen: 40,
+  },
+  dualView: {
+    largeScreen: 50,
+    mediumScreen: 40,
+    smallScreen: 30,
+  },
+}
+
+const getScreenSizeKey = () => {
+
+  const screenWidth = Dimensions.get('window').width
+
+  if (screenWidth > 900) return 'largeScreen'
+  if (screenWidth > 500) return 'mediumScreen'
+  return 'smallScreen'
+
+}
 
 class LiveValues extends Component {
 
@@ -8,10 +31,13 @@ class LiveValues extends Component {
 
     if (!turbidityEnabled) return null
 
+    const viewKey = temperatureEnabled ? 'dualView' : 'singleView'
+    const screenSizeKey = getScreenSizeKey()
+    const fontSize = fontSizeHash[viewKey][screenSizeKey]
+    console.log("XXX fontSize",fontSize)
     const marginRight = temperatureEnabled ? 5 : 0
-    const fontSize = temperatureEnabled ? 24 : 40
 
-    return <View style={{ padding: 20, backgroundColor: 'rgb(19,113,255)', flex: 1, marginRight, height: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+    return <View style={{ padding: 20, backgroundColor: 'rgb(19,113,255)', flex: 1, marginRight, height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
       <Text style={{ fontSize, fontWeight: 600, color: "#FFF", textAlign: "center" }}>{!isNaN(turbidityValue) ? `${turbidityValue.toFixed(2)} NTU` : ''}</Text>
     </View>
 
@@ -20,13 +46,14 @@ class LiveValues extends Component {
   temperatureView = (temperatureEnabled,turbidityEnabled,temperatureValue) => {
 
 
-
     if (!temperatureEnabled) return null
 
+    const viewKey = temperatureEnabled ? 'dualView' : 'singleView'
+    const screenSizeKey = getScreenSizeKey()
+    const fontSize = fontSizeHash[viewKey][screenSizeKey]
     const marginLeft = turbidityEnabled ? 5 : 0
-    const fontSize = turbidityEnabled ? 24 : 40
 
-    return <View style={{ padding: 20, backgroundColor: 'rgb(255,140,0)', flex: 1, marginLeft, height: 120, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+    return <View style={{ padding: 20, backgroundColor: 'rgb(255,140,0)', flex: 1, marginLeft, height: 180, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
       <Text style={{ fontSize, fontWeight: 600, color: "#FFF", textAlign: "center"}}>{!isNaN(temperatureValue) ? `${temperatureValue.toFixed(1)}°C` : ''}</Text>
     </View>
 

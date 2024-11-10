@@ -1,4 +1,4 @@
-package com.observatorneplinkble
+package com.observator.neplinkble
 
 import android.app.Application
 import com.facebook.react.PackageList

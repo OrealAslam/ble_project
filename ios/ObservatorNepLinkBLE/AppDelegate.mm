@@ -2,6 +2,7 @@
 
 #import <React/RCTBundleURLProvider.h>
 #import "RNSplashScreen.h"
+#import <GoogleMaps/GoogleMaps.h>
 
 @implementation AppDelegate
 
@@ -14,6 +15,8 @@
 
 //  [RNSplashScreen show];
 //  return [super application:application didFinishLaunchingWithOptions:launchOptions];
+
+  [GMSServices provideAPIKey:@"AIzaSyDzdYiK4ZG-RVA8-z2U4AzwXU0V9a6QLTM"];
 
   BOOL ret = [super application:application didFinishLaunchingWithOptions:launchOptions]; if (ret == YES) { [RNSplashScreen show];  } return ret;
 

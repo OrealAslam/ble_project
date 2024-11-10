@@ -7,32 +7,37 @@ class HeaderRightBatteryIndicator extends Component {
 
   renderBody = (props,state) => {
 
-    const { batteryCharging, batteryVoltage } = props
+    const { batteryCharging, batteryLevel } = props
 
-    if (!batteryVoltage) {
+    console.log("XXX batteryLevel",batteryLevel)
+
+    if (batteryLevel === undefined) {
       return <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
         <ActivityIndicator size="small" color={"#FFF"} />
       </View>
     }
 
     let iconName
+    let batteryLevelColor = "#FFF"
     if (batteryCharging) {
       iconName = 'battery-charging'
-    } else if (batteryVoltage > 80) {
+    } else if (batteryLevel > 80) {
       iconName = 'battery-full'
-    } else if (batteryVoltage > 20) {
+    } else if (batteryLevel > 20) {
       iconName = 'battery-half'
     } else {
       iconName = 'battery-dead'
+      //batteryLevelColor = '#c4041e'
+      batteryLevelColor = '#FFF'
     }
 
     return <View style={{ display: 'flex', flexDirection: 'column', alignItems: 'center'}}>
       <Icon
           name={iconName}
           type='ionicon'
-          color='#FFF'
+          color={batteryLevelColor}
         />
-      <Text style={{color: '#FFF', fontSize: 12, lineHeight: 12 }}>{ batteryVoltage ? `${batteryVoltage}%` : ''}</Text>
+      <Text style={{color: batteryLevelColor, fontSize: 12, lineHeight: 12 }}>{ !isNaN(batteryLevel) ? `${batteryLevel}%` : ''}</Text>
     </View>
 
   }

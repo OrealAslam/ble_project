@@ -337,8 +337,11 @@ class Devices extends Component {
       },1000)
       return
     }
+    dispatch(setWiping(false))
+    dispatch(setSensorError(false))
+    dispatch(setSensorDataReceived(false))
     this.setState({ awaitingDevice: false, connectingDevice: deviceToConnect, connectedDevice: null })
-    BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onSensorDataReceived,this.onBatteryDataReceived,this.onDeviceDisconnected)
+    BluetoothService.connectAndListen(deviceToConnect.bleDevice,this.onConnected,this.onSensorDataReceived,this.onBatteryDataReceived,this.onDeviceDisconnected)
     dispatch(setDeviceConnected(deviceToConnect))
     const routeToDeviceView = CommonActions.navigate({
       name: 'DeviceView',
@@ -350,16 +353,31 @@ class Devices extends Component {
     this.props.navigation.dispatch(routeToDeviceView)
   }
 
+  onConnected = () => {
+    const { props } = this
+    const { dispatch, navigation, devices } = props
+    dispatch(setWiping(true))
+    setTimeout(() => {
+      dispatch(setWiping(false))
+    },10000)
+  }
+
   onBatteryDataReceived = (batteryDataObj) => {
+
+    console.log("XXX onBatteryDataReceived",batteryDataObj)
+
     const { props } = this
     const { dispatch, devices, logging } = props
 
-    const rawBatteryLevel = !isNaN(batteryDataObj['percentage']) ? parseInt(batteryDataObj['percentage']) : 0
-    const batteryLevel = (rawBatteryLevel > 0) ? rawBatteryLevel : 0
-    const batteryCharging = (batteryDataObj['percentage'] === "Charging")
+    const batteryPercentage = !isNaN(batteryDataObj['percentage']) ? parseInt(batteryDataObj['percentage']) : 0
+    const batteryRawVoltage = !isNaN(batteryDataObj['rawVoltage']) ? parseInt(batteryDataObj['rawVoltage']) : 0
+    const batteryLevel = (batteryPercentage > 0) ? batteryPercentage : 0
+    const batteryCharging = (batteryDataObj['isCharging'] === 1)
+
     dispatch(updateBatteryStatus({
       batteryLevel,
       batteryCharging,
+      batteryRawVoltage,
     }))
 
   }
@@ -406,9 +424,10 @@ class Devices extends Component {
         turbidityEnabled = true
         turbidityValue = parseFloat(probeDataMatch[2])
       }
-      if (probeDataMatch[3] && (parseFloat(probeDataMatch[3]) > -100)) {
+      if (probeDataMatch[3] && (parseFloat(probeDataMatch[3]) !== 0.00) && (parseFloat(probeDataMatch[3]) > -100)) {
         temperatureEnabled = true
         temperatureValue = parseFloat(probeDataMatch[3])
+        }
       }
       const sampleDateObj = DateTime.now() //DateTime.fromMillis(Date.parse(event.timestamp))
       const tzOffsetStr = sampleDateObj.toFormat('Z')
@@ -426,6 +445,7 @@ class Devices extends Component {
         locationLng: this.state.locationLng,
         sampleDateObj,
       }))
+      console.log("JJJJJ this.props.sensorData",this.props.sensorData)
       if (logging.isLogging) {
         const loggingSessionId = logging.loggingSessionId
         const dataObj = {
@@ -435,6 +455,8 @@ class Devices extends Component {
           temperatureValue,
           locationLat: this.state.locationLat,
           locationLng: this.state.locationLng,
+          batteryLevel: this.props.sensorData.batteryLevel,
+          batteryRawVoltage: this.props.sensorData.batteryRawVoltage,
         }
         dispatch(addDataToLoggingSession(loggingSessionId,dataObj))
       }
@@ -631,7 +653,7 @@ class Devices extends Component {
           <>
             <DevicesList
               bondedDevices={devices.bondedDevicesFormatted}
-              //bondedDevices={[{ name: 'NEP-LINK BLE', id: 'demo', inRange: true}]}
+              //bondedDevices={[{ name: 'NEP-LINK BLE', id: 'demo', inRange: true }]}
               connectToDeviceHandler={this.connectToDevice}
             />
             <DevicesListButtons

@@ -116,8 +116,8 @@ class LoggingSessionView extends Component {
     const { loggingSession, loggingSessionSamples } = this.props.logging
     const { timezoneName, timezoneOffset, comment } = loggingSession
     const csvArray = [
-      ['Date','Time','Lat','Lon','Turbidity','Temperature',,'Comment'],
-      [timezoneName || 'UTC','','','','NTU','°C']
+      ['Date','Time','Milliseconds','Lat','Lon','Turbidity','Temperature',,'Comment','Battery Level','Battery Raw Voltage'],
+      [timezoneName || 'UTC','','','','','NTU','°C','','','%','mV']
     ]
     const commentRows = (comment || '').split('\n')
     commentIterator = 0
@@ -127,15 +127,19 @@ class LoggingSessionView extends Component {
       const dateTime = DateTime.fromMillis(timestamp,dateTimeOptions)
       const dateStr = dateTime.toFormat("dd LLL yyyy")
       const timeStr = dateTime.toFormat("HH:mm:ss")
+      const millis = dateTime.toMillis()
       csvArray.push([
         dateStr,
         timeStr,
+        millis,
         item.locationLat,
         item.locationLng,
         item.turbidityValue,
         item.temperatureValue,
         ,
         commentRows[commentIterator],
+        item.batteryLevel,
+        item.batteryRawVoltage,
       ].join(','))
       commentIterator++
     })

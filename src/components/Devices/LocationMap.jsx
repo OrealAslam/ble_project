@@ -16,11 +16,13 @@ class LocationMap extends Component {
         longitudeDelta: 0.02,
       }
 
+      const { mapHeight } = props
+
       return <View style={{ borderColor: '#CCC', borderWidth: 2, borderRadius: 10 }} >
         <MapView
           style={{
-            minHeight: 300,
-            height: 300,
+            minHeight: mapHeight,
+            height: mapHeight,
             width: '100%',
             padding: 0,
           }}

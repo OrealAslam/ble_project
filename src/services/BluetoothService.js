@@ -17,6 +17,7 @@ export default class BluetoothService {
       "c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b",
       "86a324aa-4b2f-46c7-b4d8-949cae59e6d7",
     ]
+
     this.manager = new BleManager()
 
     const onStateChangeSubscription = this.manager.onStateChange((state) => {
@@ -72,12 +73,16 @@ export default class BluetoothService {
     this.bleDevicesFound = []
 
     const scanFn = () => {
-      this.manager.startDeviceScan(null, { allowDuplicates: false, scanMode: ScanMode.LowLatency }, (error, device) => {
+      this.manager.startDeviceScan(null, { allowDuplicates: true, scanMode: ScanMode.LowLatency }, (error, device) => {
 
-        // console.log("XXX device",device)
-        // console.log("XXX error",error)
+        // console.log("XXX startDeviceScan",new Date())
+
+        if (device.name?.match(/NEP-LINK/)) {
+          console.log("XXX NEP-LINK device",[device.name,device.id])
+        }
 
         if (error) {
+          console.log("XXX error - returning",error)
           return //console.log('ERROR', error)
         }
 
@@ -85,10 +90,15 @@ export default class BluetoothService {
 
         //if (device.name?.match(/NEP-LINK/)) console.log("XXX device",device)
 
-        this.bleDevicesFound = this.bleDevicesFound.filter(({timestamp}) => (timestamp > (new Date().getTime() - 20000)))
+        console.log("XXXX this.bleDevicesFound BEFORE",this.bleDevicesFound.map(({bleDevice}) => bleDevice.name))
 
-        if (device.name?.match(/NEP-LINK|MET-LINK/)) {
+        this.bleDevicesFound = this.bleDevicesFound.filter(({timestamp}) => (timestamp > (new Date().getTime() - 5000)))
+
+        console.log("XXXX this.bleDevicesFound AFTER",this.bleDevicesFound.map(({bleDevice}) => bleDevice.name))
+
+        if (device.name?.match(/NEP-LINK/)) {
           ["serviceData", "isConnectable", "id", "solicitedServiceUUIDs", "manufacturerData", "serviceUUIDs", "overflowServiceUUIDs", "txPowerLevel", "rssi", "mtu", "rawScanRecord", "name", "localName", "_manager"]
+          // console.log("XXX device.name",device.name)
           // console.log("XXX device.localName",device.localName)
           // console.log("XXX device.serviceData",device.serviceData)
           // console.log("XXX device.isConnectable",device.isConnectable)
@@ -98,17 +108,15 @@ export default class BluetoothService {
             ? this.bleDevicesFound
             : [...this.bleDevicesFound,{ bleDevice: device, key: this.bleDevicesFound.length.toString(), timestamp: new Date().getTime() }]
           this.bleDevicesFound = newBleDevicesFound
-
           updateFunction(this.bleDevicesFound)
-
         }
       })
     }
 
     this.bleDevicesFoundUpdateIntervalId = setInterval(() => {
-      this.bleDevicesFound = this.bleDevicesFound.filter(({timestamp}) => (timestamp > (new Date().getTime() - 20000)))
-      //console.log("XXX timed update of this.bleDevicesFound",this.bleDevicesFound)
-    },20000)
+      this.bleDevicesFound = this.bleDevicesFound.filter(({timestamp}) => (timestamp > (new Date().getTime() - 5000)))
+      updateFunction(this.bleDevicesFound)
+    },10000)
 
     this.subscription = this.manager.onStateChange((state) => {
       console.log('XXX state',state)
@@ -131,24 +139,11 @@ export default class BluetoothService {
     this.manager.stopDeviceScan()
   }
 
-
-  static connectAndListen = (device,onSensorDataReceivedHandler,onBatteryDataReceivedHandler,onDeviceDisconnectedHandler=undefined) => {
+  static connectAndListen = (device,onDeviceConnectedHandler,onSensorDataReceivedHandler,onBatteryDataReceivedHandler,onDeviceDisconnectedHandler=undefined) => {
 
     console.log("XXX connectAndListen device",device)
 
     const connectedDiscoveredAction = () => {
-      device.monitorCharacteristicForService(
-      "c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b",
-      "9915b449-2b52-429b-bfd0-ab634002404d",
-      (error,characteristic) => {
-        if (characteristic) {
-          this.stopScan()
-          //console.log("XXXX DATA characteristic.value",characteristic.value)
-          const responseStr = base64.decode(characteristic.value)
-          console.log("XXXX DATA responseStr",responseStr)
-          onSensorDataReceivedHandler.call(this,responseStr)
-        }}
-      )
 
       device.monitorCharacteristicForService(
       "86a324aa-4b2f-46c7-b4d8-949cae59e6d7",
@@ -157,36 +152,51 @@ export default class BluetoothService {
         if (characteristic) {
           this.stopScan()
           const batteryReponseJsonStr = base64.decode(characteristic.value)
-          console.log("XXXX BATTERY batteryReponseJsonStr",batteryReponseJsonStr)
           try {
             const batteryDataObj = JSON.parse(batteryReponseJsonStr)
             onBatteryDataReceivedHandler.call(this,batteryDataObj)
           } catch (e) {
-            console.log('Error in processing batteryReponseJsonStr and calling onSensorDataReceivedHandler', e)
+            console.error("Error", e)
           }
         }}
       )
+
+      device.monitorCharacteristicForService(
+      "c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b",
+      "9915b449-2b52-429b-bfd0-ab634002404d",
+      (error,characteristic) => {
+        if (characteristic) {
+          this.stopScan()
+          const responseStr = base64.decode(characteristic.value)
+          try {
+            onSensorDataReceivedHandler.call(this,responseStr)
+          } catch (e) {
+            console.error("Error", e)
+          }
+
+        }}
+      )
+
       this.connectedDevice = device
     }
 
     this.manager.onDeviceDisconnected(device.id,(error, device) => {
-      console.log("XXX onDeviceDisconnected error",error)
-      console.log("XXX onDeviceDisconnected device",device)
       if (onDeviceDisconnectedHandler !== undefined) {
         onDeviceDisconnectedHandler()
       } else {
-        console.log("XXX onDeviceDisconnectedHandler is undefined")
+        console.error("onDeviceDisconnectedHandler is undefined")
       }
     })
 
     this.manager.isDeviceConnected(device.id)
     .then(isConnected => {
-      //console.log("XXXXX isConnected",isConnected)
+      console.log("XXXXX isConnected",isConnected)
       if (isConnected) {
         connectedDiscoveredAction()
       } else {
-        this.manager.connectToDevice(device.id, { timeout: 15000, autoConnect: true })
+        this.manager.connectToDevice(device.id, { timeout: 15000, autoConnect: true, requestMTU: 200 })
         .then((device) => {
+          onDeviceConnectedHandler.call(this)
           console.log('Connected, running requestConnectionPriorityForDevice...',device)
           this.manager.requestConnectionPriorityForDevice(device.id, ConnectionPriority.High)
           .then((device) => {

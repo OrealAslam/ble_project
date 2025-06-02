@@ -19,11 +19,13 @@ class LocationNotFound extends Component {
         message = "Searching for location..."
       }
 
+      const { mapHeight } = props
+
       return <View style={{ borderColor: '#CCC', borderWidth: 2, borderRadius: 10 }} >
         <View
           style={{
-            minHeight: 300,
-            height: 300,
+            minHeight: mapHeight,
+            height: mapHeight,
             width: '100%',
             padding: 20,
             backgroundColor: "#CCC",

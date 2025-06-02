@@ -1247,7 +1247,7 @@ PODS:
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
     - Yoga
-  - react-native-ble-plx (3.2.1):
+  - react-native-ble-plx (3.4.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1961,7 +1961,7 @@ SPEC CHECKSUMS:
   React-logger: 4072f39df335ca443932e0ccece41fbeb5ca8404
   React-Mapbuffer: 714f2fae68edcabfc332b754e9fbaa8cfc68fdd4
   React-microtasksnativemodule: 4943ad8f99be8ccf5a63329fa7d269816609df9e
-  react-native-ble-plx: 0a3f7bd84bd819bf1c32e003d083eaa3f2082ecb
+  react-native-ble-plx: f2aceed91cb75e91a858861810ac033a0be709d4
   react-native-config: 8f7283449bbb048902f4e764affbbf24504454af
   react-native-get-random-values: 21325b2244dfa6b58878f51f9aa42821e7ba3d06
   react-native-google-maps: 8cb46ae72c332204bc364dcbaf09423d244480d5

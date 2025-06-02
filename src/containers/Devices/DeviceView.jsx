@@ -48,6 +48,7 @@ class DeviceView extends Component {
 
   componentDidMount() {
     const { navigation, devices, dataReceivedHandler } = this.props
+    console.log("XXXX DeviceView componentDidMount")
   }
 
   componentDidUpdate() {
@@ -55,12 +56,17 @@ class DeviceView extends Component {
     const { navigation, sensorData } = this.props
     const batteryCharging = sensorData.batteryCharging
     const batteryLevel = sensorData.batteryLevel || 0
+    const batteryRawVoltage = sensorData.batteryRawVoltage || 0
+
+    console.log("GGG batteryRawVoltage",batteryRawVoltage)
+    console.log("GGG batteryLevel",batteryLevel)
 
     navigation.setOptions({
       headerRight: () => (
         <HeaderRightBatteryIndicator
-          batteryCharging={batteryCharging}
           batteryLevel={batteryLevel}
+          batteryRawVoltage={batteryRawVoltage}
+          batteryCharging={batteryCharging}
         />
       )
     })
@@ -78,6 +84,12 @@ class DeviceView extends Component {
     }
 
   }
+
+  sensorErrorTimeoutId = setTimeout(() => {
+    if ((!this.props.sensorData.turbidityEnabled && !this.props.sensorData.temperatureEnabled)) {
+      this.props.dispatch(setSensorError(true))
+    }
+  },40000)
 
   startLoggingHandler = () => {
     const loggingSessionId = uuidv4()
@@ -228,6 +240,9 @@ class DeviceView extends Component {
   }
 
   renderBody = (props,state) => {
+
+    const mapHeight = parseInt(Dimensions.get('screen').width * 0.6)
+
     if (props.devices.sensorError) {
       return <SafeAreaView style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
         <WaitingScreen waitingText={"Sensor Error..."}/>
@@ -252,7 +267,6 @@ class DeviceView extends Component {
       />
       <ScrollView>
         <LiveValues
-          turbidityEnabled={props.sensorData.turbidityEnabled}
           turbidityValue={props.sensorData.turbidityValue}
           temperatureEnabled={props.sensorData.temperatureEnabled}
           temperatureValue={props.sensorData.temperatureValue}
@@ -266,12 +280,14 @@ class DeviceView extends Component {
             ref={this.mapViewRef}
             lat={props.sensorData.locationLat}
             lng={props.sensorData.locationLng}
+            mapHeight={mapHeight}
           />
         }
         {((!props.sensorData.locationEnabled) || (!props.sensorData.locationLat && !props.sensorData.locationLng)) && <LocationNotFound
             locationEnabled={props.sensorData.locationEnabled}
             lat={props.sensorData.locationLat}
             lng={props.sensorData.locationLng}
+            mapHeight={mapHeight}
           />
         }
         </View>

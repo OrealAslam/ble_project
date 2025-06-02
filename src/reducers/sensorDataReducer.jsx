@@ -10,6 +10,7 @@ const initialState = {
   locationLat: null,
   locationLng: null,
   batteryLevel: null,
+  batteryRawVoltage: null,
   batteryCharging: null,
 }
 
@@ -34,6 +35,7 @@ export default function (state = initialState, action) {
     case 'SENSOR_DATA_UPDATE_BATTERY_STATUS':
       return  { ...state,
         batteryLevel: action.meta.batteryLevel,
+        batteryRawVoltage: action.meta.batteryRawVoltage,
         batteryCharging: action.meta.batteryCharging,
       }
 

@@ -1,27 +1,30 @@
-import React, { Component } from 'react'
-import PropTypes from 'prop-types'
-import { View, Text } from 'react-native'
+import React, {Component} from 'react';
+import PropTypes from 'prop-types';
+import {View, Text} from 'react-native';
 
-import { LineChart } from "react-native-gifted-charts"
+import {LineChart} from 'react-native-gifted-charts';
 
 class SessionLineChart extends Component {
-
-  lineChart = (props) => {
-
-    const limit = 200 //props.turbiditySamples.length
-    const limitedList = props.turbiditySamples.slice(0,limit)
-    const valuesMap = limitedList.map((dp) => {
-      return dp.value
-    })
-    console.log("limitedList",limitedList)
-    const maxValue = Math.max(...valuesMap)
-    const minValue = Math.min(...valuesMap)
-    const roundedMaxValue = Math.ceil(maxValue/10)*10
-    const roundedMinValue = Math.floor(maxValue/10)*10
+  lineChart = props => {
+    const limit = 200; //props.turbiditySamples.length
+    const limitedList = props.turbiditySamples.slice(0, limit);
+    const valuesMap = limitedList.map(dp => {
+      return dp.value;
+    });
+    console.log('limitedList', limitedList);
+    const maxValue = Math.max(...valuesMap);
+    const minValue = Math.min(...valuesMap);
+    const roundedMaxValue = Math.ceil(maxValue / 10) * 10;
+    const roundedMinValue = Math.floor(maxValue / 10) * 10;
 
     return (
       <View>
-        <View style={{backgroundColor: '#1A3461', borderWidth: 2, borderColor: 'white'}}>
+        <View
+          style={{
+            backgroundColor: '#1A3461',
+            borderWidth: 2,
+            borderColor: 'white',
+          }}>
           <LineChart
             initialSpacing={0}
             data={limitedList}
@@ -47,21 +50,18 @@ class SessionLineChart extends Component {
           />
         </View>
       </View>
-    )
+    );
+  };
 
-  }
+  componentWillUnmount = () => {};
 
-  componentWillUnmount = () => {
-  }
-
-  renderBody = (props,state) => {
-    return this.lineChart(props)
-  }
+  renderBody = (props, state) => {
+    return this.lineChart(props);
+  };
 
   render() {
-    return this.renderBody(this.props,this.state)
+    return this.renderBody(this.props, this.state);
   }
-
 }
 
-export default SessionLineChart
+export default SessionLineChart;

@@ -36,12 +36,26 @@ target 'ObservatorNepLinkBLE' do
   end
 
   post_install do |installer|
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
       installer,
       config[:reactNativePath],
-      :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
+      :mac_catalyst_enabled => false
     )
+    
+    # Define char_traits for unsigned char to fix Xcode 16.3+ issue
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['ONLY_ACTIVE_ARCH'] = 'NO'
+        
+        # Special header to define char_traits for unsigned char
+        config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
+        config.build_settings['HEADER_SEARCH_PATHS'] << '$(PODS_ROOT)/../../node_modules/react-native/ReactCommon/cxxreact'
+        
+        # Add custom C++ definitions
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FOLLY_HAVE_PTHREAD=1'
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << '_LIBCPP_ENABLE_CXX17_REMOVED_FEATURES=1'
+      end
+    end
   end
 end

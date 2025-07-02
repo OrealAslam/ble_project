@@ -1,6 +1,12 @@
 import React, {Component} from 'react';
 import PropTypes from 'prop-types';
-import {SafeAreaView, View, PermissionsAndroid, Platform} from 'react-native';
+import {
+  SafeAreaView,
+  View,
+  PermissionsAndroid,
+  Platform,
+  Alert,
+} from 'react-native';
 
 import BluetoothService from '../../services/BluetoothService';
 import {connect} from 'react-redux';
@@ -23,6 +29,7 @@ import {
   setBondedDevices,
   addKnownDevices,
   fetchKnownDevices,
+  addBondedDevice,
 } from '../../actions/DeviceActions';
 import {stopLogging} from '../../actions/LoggingActions';
 
@@ -58,6 +65,7 @@ class Devices extends Component {
       lastSaveLoggingSessionSamplesCount: 0,
       attemptingConnection: false,
       demoModeEnabled: false,
+      availableDevices: [],
     };
   }
 
@@ -70,15 +78,103 @@ class Devices extends Component {
     this.locationUpdate.call(this);
   }
 
-  startScan = () => {
-    console.log('XXX startScan');
+  // connectToUnpairedDevice = device => {
+  //   console.log('Connecting to unpaired device', device);
+  //   // Optionally: pair or bond first if needed
+  //   this.connectToDevice(device);
+  // };
+
+  connectToUnpairedDevice = async device => {
+    try {
+      console.log('Connecting to unpaired device', device);
+
+      const bondedDevice = await BluetoothService.bondDevice(device.bleDevice); // ✅ Fixed
+
+      this.props.dispatch(
+        addBondedDevice({
+          id: bondedDevice.id,
+          name: bondedDevice.name,
+          address: bondedDevice.address,
+        }),
+      );
+
+      this.connectToDevice(bondedDevice);
+    } catch (error) {
+      console.warn('Bonding failed:', error);
+      Alert.alert('Bonding Failed', 'Could not pair with this device.');
+    }
+  };
+
+  scanTimeout = null;
+
+  // startScan = async () => {
+  //   console.log('XXX startScan');
+
+  //   const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
+  //   if (!isBluetoothEnabled) {
+  //     Alert.alert(
+  //       'Bluetooth Disabled',
+  //       'Please turn on Bluetooth to scan for nearby devices.',
+  //       [{text: 'OK'}],
+  //     );
+  //     return;
+  //   }
+
+  //   BluetoothService.startScan(
+  //     () => {
+  //       console.log('XXX bluetoothStateFunction');
+  //     },
+  //     devicesFound => {
+  //       console.log('XXX updateFunction', devicesFound);
+
+  //       // Filter bonded and unbonded devices
+  //       const bonded = devicesFound.filter(d => d.bonded === true);
+  //       const unbonded = devicesFound.filter(d => d.bonded !== true);
+
+  //       // Update bonded devices via Redux
+  //       this.updateBondedDevices(bonded);
+
+  //       // Update unpaired/available devices in component state
+  //       this.setState({availableDevices: unbonded});
+  //     },
+  //   );
+  // };
+
+  startScan = async () => {
+    console.log('📡 Starting BLE scan...');
+
+    const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
+    if (!isBluetoothEnabled) {
+      Alert.alert(
+        'Bluetooth Disabled',
+        'Please turn on Bluetooth to scan for nearby devices.',
+        [{text: 'OK'}],
+      );
+      return;
+    }
+
     BluetoothService.startScan(
       () => {
-        console.log('XXX bluetoothStateFunction');
+        console.log('🟢 Bluetooth scan started.');
       },
       devicesFound => {
-        console.log('XXX updateFunction', devicesFound);
-        this.updateBondedDevices(devicesFound);
+        console.log('📍 Devices found:', devicesFound);
+
+        const bonded = devicesFound.filter(d => d.bonded === true);
+        const unbonded = devicesFound.filter(d => d.bonded !== true);
+
+        // Update bonded devices via Redux
+        this.updateBondedDevices(bonded);
+
+        // Update unpaired devices in state
+        this.setState({availableDevices: unbonded});
+
+        // 🔔 Show alert if at least one unpaired BLE device is found
+        if (unbonded.length > 0) {
+          const firstDeviceName = unbonded[0].name || 'Unnamed Device';
+        } else {
+          console.log('❌ No unpaired devices found.');
+        }
       },
     );
   };
@@ -295,45 +391,117 @@ class Devices extends Component {
     console.log('XXX connectedDevices', connectedDevices);
   };
 
-  connectToDevice = device => {
+  // connectToDevice = device => {
+  //   BluetoothService.stopScan();
+  //   const {props} = this;
+  //   const {dispatch, navigation, devices} = props;
+  //   const deviceToConnect = devices.bondedDevicesRaw.find(
+  //     o => o.bleDevice.id === device.id,
+  //   );
+  //   const deviceDataObj = devices.bondedDevicesFormatted.find(
+  //     o => o.id === device.id,
+  //   );
+  //   // console.log("XXX device.id",device.id)
+  //   // console.log("XXX devices.bondedDevicesRaw",devices.bondedDevicesRaw)
+  //   // console.log("XXX deviceToConnect",deviceToConnect)
+  //   this.setState({
+  //     awaitingDevice: true,
+  //     connectingDevice: null,
+  //     connectedDevice: null,
+  //   });
+  //   if (!deviceToConnect) {
+  //     // || !deviceToConnect.isConnected) {
+  //     this.setState({
+  //       awaitingDevice: true,
+  //       connectingDevice: null,
+  //       connectedDevice: null,
+  //     });
+  //     setTimeout(() => {
+  //       console.log('XXX running again');
+  //       this.connectToDevice.call(this, device);
+  //     }, 1000);
+  //     return;
+  //   }
+  //   dispatch(setWiping(false));
+  //   dispatch(setSensorError(false));
+  //   dispatch(setSensorDataReceived(false));
+  //   this.setState({
+  //     awaitingDevice: false,
+  //     connectingDevice: deviceToConnect,
+  //     connectedDevice: null,
+  //   });
+  //   BluetoothService.connectAndListen(
+  //     deviceToConnect.bleDevice,
+  //     this.onConnected,
+  //     this.onSensorDataReceived,
+  //     this.onBatteryDataReceived,
+  //     this.onDeviceDisconnected,
+  //   );
+  //   dispatch(setDeviceConnected(deviceToConnect));
+  //   const routeToDeviceView = CommonActions.navigate({
+  //     name: 'DeviceView',
+  //     params: {
+  //       deviceDataObj,
+  //       deviceName: deviceDataObj.name,
+  //     },
+  //   });
+  //   this.props.navigation.dispatch(routeToDeviceView);
+  // };
+
+  connectToDevice = (device, retryCount = 0) => {
+    if (!device || typeof device !== 'object') {
+      console.warn('Invalid device passed to connectToDevice:', device);
+      return;
+    }
+
     BluetoothService.stopScan();
-    const {props} = this;
-    const {dispatch, navigation, devices} = props;
+
+    const {dispatch, navigation, devices} = this.props;
+
     const deviceToConnect = devices.bondedDevicesRaw.find(
       o => o.bleDevice.id === device.id,
     );
+
     const deviceDataObj = devices.bondedDevicesFormatted.find(
       o => o.id === device.id,
     );
-    // console.log("XXX device.id",device.id)
-    // console.log("XXX devices.bondedDevicesRaw",devices.bondedDevicesRaw)
-    // console.log("XXX deviceToConnect",deviceToConnect)
-    this.setState({
-      awaitingDevice: true,
-      connectingDevice: null,
-      connectedDevice: null,
-    });
+
     if (!deviceToConnect) {
-      // || !deviceToConnect.isConnected) {
+      if (retryCount >= 5) {
+        Alert.alert('Connection Timeout', 'Unable to connect to the device.');
+        this.setState({
+          awaitingDevice: false,
+          connectingDevice: null,
+          connectionAttemptStarted: false,
+        });
+        return;
+      }
+
       this.setState({
         awaitingDevice: true,
-        connectingDevice: null,
-        connectedDevice: null,
+        connectingDevice: device,
+        connectionAttemptStarted: true,
       });
+
       setTimeout(() => {
-        console.log('XXX running again');
-        this.connectToDevice.call(this, device);
+        console.log(`XXX retrying connection... (${retryCount + 1})`);
+        this.connectToDevice(device, retryCount + 1);
       }, 1000);
+
       return;
     }
+
+    // Device found, continue connecting
     dispatch(setWiping(false));
     dispatch(setSensorError(false));
     dispatch(setSensorDataReceived(false));
+
     this.setState({
       awaitingDevice: false,
       connectingDevice: deviceToConnect,
       connectedDevice: null,
     });
+
     BluetoothService.connectAndListen(
       deviceToConnect.bleDevice,
       this.onConnected,
@@ -341,15 +509,18 @@ class Devices extends Component {
       this.onBatteryDataReceived,
       this.onDeviceDisconnected,
     );
+
     dispatch(setDeviceConnected(deviceToConnect));
+
     const routeToDeviceView = CommonActions.navigate({
       name: 'DeviceView',
       params: {
         deviceDataObj,
-        deviceName: deviceDataObj.name,
+        deviceName: deviceDataObj?.name || 'Unnamed Device',
       },
     });
-    this.props.navigation.dispatch(routeToDeviceView);
+
+    navigation.dispatch(routeToDeviceView);
   };
 
   onConnected = () => {
@@ -464,6 +635,8 @@ class Devices extends Component {
           batteryLevel: this.props.sensorData.batteryLevel,
           batteryRawVoltage: this.props.sensorData.batteryRawVoltage,
         };
+
+        console.log(`adding data insidse DB ${JSON.stringify(dataObj)}`);
         dispatch(addDataToLoggingSession(loggingSessionId, dataObj));
       }
       if (devices.wiping) {
@@ -700,10 +873,17 @@ class Devices extends Component {
             />
           ) : (
             <>
-              <DevicesList
+              {/* <DevicesList
                 bondedDevices={devices.bondedDevicesFormatted}
                 //bondedDevices={[{ name: 'NEP-LINK BLE', id: 'demo', inRange: true }]}
                 connectToDeviceHandler={this.connectToDevice}
+              /> */}
+              <DevicesList
+                bondedDevices={devices.bondedDevicesFormatted}
+                connectToDeviceHandler={this.connectToDevice}
+                unpairedDevices={this.state.availableDevices}
+                connectToUnpairedDeviceHandler={this.connectToUnpairedDevice}
+                startScanHandler={this.startScan} // ✅ required!
               />
               <DevicesListButtons
                 enterDemoModeButtonPressHandler={this.enterDemoModeButtonPress}
@@ -726,3 +906,247 @@ export default connect(({demo, devices, logging, sensorData}) => ({
   logging,
   sensorData,
 }))(Devices);
+
+// FUNCTIONAL BASED COMPONENT VERSION
+
+// import React, {useState, useEffect, useRef, useCallback} from 'react';
+// import {SafeAreaView, View, PermissionsAndroid, Platform} from 'react-native';
+// import {useDispatch, useSelector} from 'react-redux';
+// import {CommonActions, useNavigation} from '@react-navigation/native';
+// import Geolocation from '@react-native-community/geolocation';
+// import RNBluetoothClassic from 'react-native-bluetooth-classic';
+
+// import BluetoothService from '../../services/BluetoothService';
+
+// import NepLinkHeader from '../../components/Devices/NepLinkHeader';
+// import BluetoothDisabledError from '../../components/Devices/BluetoothDisabledError';
+// import DevicesList from '../../components/Devices/DevicesList';
+// import DevicesListButtons from '../../components/Devices/DevicesListButtons';
+// import DeviceConnectingDialog from '../../components/Devices/DeviceConnectingDialog';
+
+// import {
+//   setDemoModeEnabled,
+//   setDeviceConnecting,
+//   setDeviceConnected,
+//   setDeviceDisconnecting,
+//   setDeviceDisconnected,
+//   clearConnectedDevice,
+//   setWiping,
+//   setSensorDataReceived,
+//   setSensorError,
+//   setDiscoveredDevices,
+//   setBondedDevices,
+//   addKnownDevices,
+//   fetchKnownDevices,
+// } from '../../actions/DeviceActions';
+// import {
+//   stopLogging,
+//   addDataToLoggingSession,
+//   saveLoggingSessionSamples,
+// } from '../../actions/LoggingActions';
+// import {
+//   updateValues,
+//   resetValues,
+//   updateBatteryStatus,
+// } from '../../actions/SensorDataActions';
+
+// const Devices = () => {
+//   const dispatch = useDispatch();
+//   const navigation = useNavigation();
+
+//   const demo = useSelector(state => state.demo);
+//   const devices = useSelector(state => state.devices);
+//   const logging = useSelector(state => state.logging);
+//   const sensorData = useSelector(state => state.sensorData);
+
+//   const [bluetoothAvailable, setBluetoothAvailable] = useState(true);
+//   const [bluetoothEnabled, setBluetoothEnabled] = useState(true);
+//   const [bluetoothPermissions, setBluetoothPermissions] = useState(true);
+//   const [locationEnabled, setLocationEnabled] = useState(true);
+//   const [awaitingDevice, setAwaitingDevice] = useState(false);
+//   const [connectionAttemptStarted, setConnectionAttemptStarted] = useState(false);
+//   const [connectingDevice, setConnectingDevice] = useState(null);
+//   const [connectedDevice, setConnectedDevice] = useState(null);
+//   const [locationLat, setLocationLat] = useState(null);
+//   const [locationLng, setLocationLng] = useState(null);
+//   const [lastSaveLoggingSessionSamplesCount, setLastSaveLoggingSessionSamplesCount] = useState(0);
+//   const [demoModeEnabled, setDemoModeEnabledLocal] = useState(false);
+
+//   const intervalId = useRef(null);
+//   const locationUpdateId = useRef(null);
+//   const currentTurbidityValue = useRef(null);
+//   const currentTemperatureValue = useRef(null);
+
+//   useEffect(() => {
+//     BluetoothService.init();
+//     getBluetoothPermissionsAndStartBluetoothProcesses();
+//     locationUpdate();
+//   }, []);
+
+//   useEffect(() => {
+//     if (logging.loggingSessionSamples.length - lastSaveLoggingSessionSamplesCount >= 10) {
+//       setLastSaveLoggingSessionSamplesCount(logging.loggingSessionSamples.length);
+//       dispatch(saveLoggingSessionSamples(logging.loggingSessionId, logging.loggingSessionSamples));
+//     }
+//   }, [logging.loggingSessionSamples]);
+
+//   useEffect(() => {
+//     if (demoModeEnabled) {
+//       if (intervalId.current) clearInterval(intervalId.current);
+//       intervalId.current = setInterval(() => {
+//         createDemoDataReading();
+//       }, 1000);
+//     } else if (!demo.demoModeEnabled) {
+//       clearInterval(intervalId.current);
+//       currentTurbidityValue.current = null;
+//       currentTemperatureValue.current = null;
+//       dispatch(resetValues());
+//     }
+//   }, [demoModeEnabled, demo.demoModeEnabled]);
+
+//   useEffect(() => {
+//     return () => {
+//       dispatch(resetValues());
+//       clearInterval(intervalId.current);
+//       clearInterval(locationUpdateId.current);
+//     };
+//   }, []);
+
+//   const getBluetoothPermissionsAndStartBluetoothProcesses = async () => {
+//     let fineLocationPermission = true;
+//     let bluetoothScanPermission = true;
+//     let bluetoothConnectPermission = true;
+
+//     if (Platform.OS === 'android') {
+//       if (Platform.Version < 31) {
+//         fineLocationPermission = await PermissionsAndroid.request(
+//           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+//         );
+//       } else {
+//         const result = await PermissionsAndroid.requestMultiple([
+//           PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+//           PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+//           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+//         ]);
+
+//         bluetoothScanPermission = result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN] === 'granted';
+//         bluetoothConnectPermission = result[PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT] === 'granted';
+//         fineLocationPermission = result[PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION] === 'granted';
+//       }
+//     }
+
+//     if (bluetoothScanPermission && bluetoothConnectPermission && fineLocationPermission) {
+//       setBluetoothPermissions(true);
+//     } else {
+//       setBluetoothPermissions(false);
+//       return;
+//     }
+
+//     startScan();
+//   };
+
+//   const locationUpdate = () => {
+//     locationUpdateId.current = setInterval(() => {
+//       Geolocation.getCurrentPosition(
+//         position => {
+//           const {latitude, longitude} = position.coords;
+//           setLocationLat(latitude);
+//           setLocationLng(longitude);
+//           setLocationEnabled(true);
+//           clearInterval(locationUpdateId.current);
+//         },
+//         error => {
+//           console.log('Location error:', error);
+//           setLocationEnabled(false);
+//         },
+//         {enableHighAccuracy: true, timeout: 40000, maximumAge: 10000}
+//       );
+//     }, 30000);
+//   };
+
+//   const startScan = () => {
+//     BluetoothService.startScan(
+//       () => {},
+//       devicesFound => {
+//         updateBondedDevices(devicesFound);
+//       }
+//     );
+//   };
+
+//   const updateBondedDevices = bondedDevices => {
+//     dispatch(setBondedDevices(bondedDevices));
+//     dispatch(addKnownDevices(bondedDevices));
+//   };
+
+//   const onSensorDataReceived = useCallback(responseStr => {
+//     // sensor data parsing logic here...
+//   }, [dispatch, locationLat, locationLng, demoModeEnabled, logging, sensorData]);
+
+//   const createDemoDataReading = () => {
+//     // your createDemoDataReading logic as-is...
+//   };
+
+//   const enterDemoModeButtonPress = () => {
+//     dispatch(setDemoModeEnabled(true));
+//     setDemoModeEnabledLocal(true);
+//     navigation.dispatch(
+//       CommonActions.navigate({
+//         name: 'DeviceView',
+//         params: {
+//           deviceDataObj: null,
+//           demoModeEnabled: true,
+//           deviceName: 'DEMO',
+//         },
+//       })
+//     );
+//   };
+
+//   const cancelConnectToDevice = () => {
+//     setConnectingDevice(null);
+//     setConnectedDevice(null);
+//     setConnectionAttemptStarted(false);
+//     setAwaitingDevice(false);
+//   };
+
+//   const connectingDeviceLabel = connectingDevice ? connectingDevice.name : null;
+//   const deviceAddress = connectingDevice ? connectingDevice.address : null;
+//   const dialogVisible = !!connectingDevice || awaitingDevice;
+
+//   return (
+//     <SafeAreaView>
+//       <DeviceConnectingDialog
+//         visible={dialogVisible}
+//         awaitingDevice={awaitingDevice}
+//         deviceStatus={devices.status}
+//         deviceLabel={connectingDeviceLabel}
+//         deviceAddress={deviceAddress}
+//         connectingDevice={connectingDevice}
+//         connectionAttemptStarted={connectionAttemptStarted}
+//         connectToDeviceHandler={() => {}} // implement this
+//         cancelConnectToDeviceHandler={cancelConnectToDevice}
+//       />
+//       <View>
+//         <NepLinkHeader />
+//         {!(bluetoothAvailable && bluetoothEnabled && bluetoothPermissions) ? (
+//           <BluetoothDisabledError
+//             bluetoothAvailable={bluetoothAvailable}
+//             bluetoothEnabled={bluetoothEnabled}
+//             bluetoothPermissions={bluetoothPermissions}
+//           />
+//         ) : (
+//           <>
+//             <DevicesList
+//               bondedDevices={devices.bondedDevicesFormatted}
+//               connectToDeviceHandler={() => {}} // implement this
+//             />
+//             <DevicesListButtons
+//               enterDemoModeButtonPressHandler={enterDemoModeButtonPress}
+//             />
+//           </>
+//         )}
+//       </View>
+//     </SafeAreaView>
+//   );
+// };
+
+// export default Devices;

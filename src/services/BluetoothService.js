@@ -5,8 +5,12 @@ import {
   LogLevel,
   ScanMode,
 } from 'react-native-ble-plx';
+import RNBluetoothClassic from 'react-native-bluetooth-classic';
+import Geolocation from '@react-native-community/geolocation';
+import {PermissionsAndroid, Platform, Alert, Linking} from 'react-native';
 import base64 from 'base-64';
 import {DateTime} from 'luxon';
+import {setDiscoveredDevices} from '../actions/DeviceActions';
 
 export default class BluetoothService {
   static init() {
@@ -34,17 +38,137 @@ export default class BluetoothService {
 
             this.manager.setLogLevel(LogLevel.Verbose);
 
-            if (this.isScanning) {
-              this.startScan(this.bluetoothStateFunction, this.updateFunction);
+            if (
+              this.isScanning &&
+              this.bluetoothStateFunction &&
+              this.updateFunction &&
+              this.reduxDispatch
+            ) {
+              this.startScan(
+                this.bluetoothStateFunction,
+                this.updateFunction,
+                this.reduxDispatch, // ✅ Pass redux dispatch
+              );
             }
           })
           .catch(error => {
-            //console.log("Error Uk1",error)
+            console.log('Error while handling connected devices', error);
           });
 
         onStateChangeSubscription.remove();
       }
     }, true);
+  }
+
+  /*************  ✨ Windsurf Command ⭐  *************/
+  /**
+   * Requests necessary Bluetooth permissions for Android devices.
+   *
+   * This method checks if the platform is Android and requests multiple
+   * permissions, including access to fine location, Bluetooth scan, and
+   * Bluetooth connect. It throws an error if any of the permissions are
+   * not granted.
+   *
+   * @throws {Error} If any of the Bluetooth permissions are not granted.
+   */
+
+  /*******  2c67298f-8d44-4c46-a760-c57de2c0ddd7  *******/
+
+  static async bondDevice(device) {
+    try {
+      // BLE device ID = MAC address
+      const bondedDevice = await RNBluetoothClassic.pairDevice(device.id);
+      console.log('✅ Device bonded successfully:', bondedDevice);
+      return bondedDevice;
+    } catch (error) {
+      console.error('❌ Failed to bond device:', error);
+      throw error;
+    }
+  }
+
+  static async ensureBleScanReady(): Promise<boolean> {
+    if (Platform.OS !== 'android') {
+      return true; // iOS handles this differently
+    }
+
+    try {
+      // 🔐 Request BLE + Location permissions
+      const permissions = [
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      ];
+
+      const granted = await PermissionsAndroid.requestMultiple(permissions);
+
+      const allGranted = Object.values(granted).every(
+        result => result === PermissionsAndroid.RESULTS.GRANTED,
+      );
+
+      if (!allGranted) {
+        Alert.alert(
+          'Permission Denied',
+          'Please grant all required Bluetooth and Location permissions.',
+        );
+        return false;
+      }
+
+      // 📍 Check if location services (GPS) are turned ON
+      const gpsEnabled = await new Promise(resolve => {
+        Geolocation.getCurrentPosition(
+          () => resolve(true),
+          error => {
+            console.warn('Location/GPS not enabled:', error);
+            resolve(false);
+          },
+          {enableHighAccuracy: true, timeout: 5000, maximumAge: 0},
+        );
+      });
+
+      if (!gpsEnabled) {
+        Alert.alert(
+          'Enable GPS',
+          'Please enable Location (GPS) services to scan for BLE devices.',
+          [
+            {text: 'Cancel', style: 'cancel'},
+            {
+              text: 'Open Settings',
+              onPress: () => Linking.openSettings(),
+            },
+          ],
+        );
+        return false;
+      }
+
+      return true;
+    } catch (e) {
+      console.error('ensureBleScanReady error:', e);
+      Alert.alert(
+        'BLE Setup Error',
+        'Something went wrong checking Bluetooth/Location readiness.',
+      );
+      return false;
+    }
+  }
+
+  static async requestBluetoothPermissions() {
+    if (Platform.OS === 'android') {
+      const permissions = [
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      ];
+
+      const granted = await PermissionsAndroid.requestMultiple(permissions);
+
+      const allGranted = Object.values(granted).every(
+        res => res === PermissionsAndroid.RESULTS.GRANTED,
+      );
+
+      if (!allGranted) {
+        throw new Error('Bluetooth permissions not granted.');
+      }
+    }
   }
 
   static restartBleManager() {
@@ -58,9 +182,62 @@ export default class BluetoothService {
     this.manager.destroy();
   }
 
-  static startScan = (bluetoothStateFunction, updateFunction) => {
-    //console.log('startScan: bluetoothStateFunction',bluetoothStateFunction)
+  // startScan = async () => {
+  //   console.log('📡 Attempting BLE Scan...');
 
+  //   try {
+  //     await requestBluetoothPermissions(); // ✅ Request required permissions
+  //   } catch (e) {
+  //     Alert.alert('Permission Error', e.message || 'Unable to get permissions');
+  //     return;
+  //   }
+
+  //   const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
+  //   if (!isBluetoothEnabled) {
+  //     Alert.alert(
+  //       'Bluetooth Disabled',
+  //       'Please turn on Bluetooth to scan for nearby devices.',
+  //       [{text: 'OK'}],
+  //     );
+  //     return;
+  //   }
+
+  //   BluetoothService.startScan(
+  //     () => {
+  //       console.log('✅ BLE State: PoweredOn');
+  //     },
+  //     devicesFound => {
+  //       console.log('📍 Devices found:', devicesFound);
+
+  //       const bonded = devicesFound.filter(d => d.bonded === true);
+  //       const unbonded = devicesFound.filter(d => d.bonded !== true);
+
+  //       this.updateBondedDevices(bonded);
+  //       this.setState({availableDevices: unbonded});
+
+  //       // Alert when any device found
+  //       if (devicesFound.length > 0) {
+  //         Alert.alert(
+  //           'Device Found',
+  //           `${devicesFound.length} BLE device(s) found nearby.`,
+  //         );
+  //       }
+  //     },
+  //   );
+  // };
+
+  static startScan = async (
+    bluetoothStateFunction,
+    updateFunction,
+    reduxDispatch,
+  ) => {
+    const ready = await ensureBleScanReady(); // ✅ Bluetooth + GPS check
+    if (!ready) {
+      console.log('❌ BLE scan readiness check failed. Aborting scan.');
+      return;
+    }
+
+    // Clean up any previous scan intervals
     if (this.bleDevicesFoundUpdateIntervalId) {
       clearInterval(this.bleDevicesFoundUpdateIntervalId);
       this.bleDevicesFoundUpdateIntervalId = null;
@@ -68,7 +245,6 @@ export default class BluetoothService {
 
     this.bluetoothStateFunction = bluetoothStateFunction;
     this.updateFunction = updateFunction;
-
     this.bleDevicesFound = [];
 
     const scanFn = () => {
@@ -76,87 +252,69 @@ export default class BluetoothService {
         null,
         {allowDuplicates: true, scanMode: ScanMode.LowLatency},
         (error, device) => {
-          // console.log("XXX startDeviceScan",new Date())
-
-          if (device.name?.match(/NEP-LINK/)) {
-            console.log('XXX NEP-LINK device', [device.name, device.id]);
-          }
-
           if (error) {
-            console.log('XXX error - returning', error);
-            return; //console.log('ERROR', error)
+            console.log('BLE scan error:', error);
+            return;
           }
 
           this.isScanning = true;
 
-          //if (device.name?.match(/NEP-LINK/)) console.log("XXX device",device)
+          const now = Date.now();
 
-          console.log(
-            'XXXX this.bleDevicesFound BEFORE',
-            this.bleDevicesFound.map(({bleDevice}) => bleDevice.name),
-          );
-
+          // Remove stale devices older than 5s
           this.bleDevicesFound = this.bleDevicesFound.filter(
-            ({timestamp}) => timestamp > new Date().getTime() - 5000,
+            ({timestamp}) => timestamp > now - 5000,
           );
 
-          console.log(
-            'XXXX this.bleDevicesFound AFTER',
-            this.bleDevicesFound.map(({bleDevice}) => bleDevice.name),
+          // Check for duplicates
+          const alreadyAdded = this.bleDevicesFound.find(
+            o => o.bleDevice.id === device.id,
           );
 
-          if (device.name?.match(/NEP-LINK/)) {
-            [
-              'serviceData',
-              'isConnectable',
-              'id',
-              'solicitedServiceUUIDs',
-              'manufacturerData',
-              'serviceUUIDs',
-              'overflowServiceUUIDs',
-              'txPowerLevel',
-              'rssi',
-              'mtu',
-              'rawScanRecord',
-              'name',
-              'localName',
-              '_manager',
-            ];
-            // console.log("XXX device.name",device.name)
-            // console.log("XXX device.localName",device.localName)
-            // console.log("XXX device.serviceData",device.serviceData)
-            // console.log("XXX device.isConnectable",device.isConnectable)
-            // console.log("XXX device.serviceUUIDs",device.serviceUUIDs)
+          if (!alreadyAdded && device.name) {
+            console.log('📡 Found BLE device:', device.name, device.id);
 
-            const newBleDevicesFound = this.bleDevicesFound.find(
-              o => o.bleDevice.id === device.id,
-            )
-              ? this.bleDevicesFound
-              : [
-                  ...this.bleDevicesFound,
-                  {
-                    bleDevice: device,
-                    key: this.bleDevicesFound.length.toString(),
-                    timestamp: new Date().getTime(),
-                  },
-                ];
-            this.bleDevicesFound = newBleDevicesFound;
-            updateFunction(this.bleDevicesFound);
+            const newEntry = {
+              bleDevice: device,
+              key: this.bleDevicesFound.length.toString(),
+              timestamp: now,
+            };
+
+            this.bleDevicesFound = [...this.bleDevicesFound, newEntry];
+
+            if (reduxDispatch) {
+              reduxDispatch(setDiscoveredDevices(this.bleDevicesFound));
+            }
+
+            if (updateFunction) {
+              updateFunction(this.bleDevicesFound);
+            }
           }
         },
       );
     };
 
+    // Periodic cleanup of stale devices
     this.bleDevicesFoundUpdateIntervalId = setInterval(() => {
+      const now = Date.now();
       this.bleDevicesFound = this.bleDevicesFound.filter(
-        ({timestamp}) => timestamp > new Date().getTime() - 5000,
+        ({timestamp}) => timestamp > now - 5000,
       );
-      updateFunction(this.bleDevicesFound);
+
+      if (reduxDispatch) {
+        reduxDispatch(setDiscoveredDevices(this.bleDevicesFound));
+      }
+      if (updateFunction) {
+        updateFunction(this.bleDevicesFound);
+      }
     }, 10000);
 
+    // Watch for Bluetooth state and trigger scan
     this.subscription = this.manager.onStateChange(state => {
-      console.log('XXX state', state);
-      bluetoothStateFunction.call(this, state);
+      console.log('BLE State:', state);
+      if (bluetoothStateFunction) {
+        bluetoothStateFunction.call(this, state);
+      }
       if (state === 'PoweredOn') {
         scanFn.call(this);
       }
@@ -210,6 +368,8 @@ export default class BluetoothService {
           if (characteristic) {
             this.stopScan();
             const responseStr = base64.decode(characteristic.value);
+
+            console.log(`responseStr ${responseStr}`);
             try {
               onSensorDataReceivedHandler.call(this, responseStr);
             } catch (e) {
@@ -327,7 +487,7 @@ export default class BluetoothService {
         this.manager.destroy();
       })
       .catch(error => {
-        //console.log("Error Uk2",error)
+        console.log('Error Uk2', error);
       });
   }
 }

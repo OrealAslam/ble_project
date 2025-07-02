@@ -28,6 +28,7 @@ import {Colors} from 'react-native/Libraries/NewAppScreen';
 const RootStack = createNativeStackNavigator();
 
 import TabContainer from './src/components/TabContainer';
+import {createTables, getDBConnection} from './src/utils/db.js';
 
 const store = createStore(
   combinedReducer,
@@ -38,6 +39,18 @@ function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
 
   useEffect(() => {
+    const initDB = async () => {
+      try {
+        const db = await getDBConnection();
+        await createTables(db);
+        console.log('SQLite tables initialized');
+      } catch (error) {
+        console.error('Failed to initialize DB:', error);
+      }
+    };
+
+    initDB();
+
     SplashScreen.hide();
   }, []);
 

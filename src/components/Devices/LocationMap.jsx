@@ -66,8 +66,14 @@ const LocationMap = ({lat, lng, mapHeight}) => {
   };
 
   return (
-    <View style={{borderColor: '#CCC', borderWidth: 2, borderRadius: 10}}>
+    <View
+      style={{
+        borderColor: '#CCC',
+        borderWidth: 2,
+        borderRadius: 10,
+      }}>
       <MapView
+        provider="google"
         style={{
           minHeight: mapHeight,
           height: mapHeight,

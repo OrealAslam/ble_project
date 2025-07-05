@@ -247,11 +247,10 @@ class DevicesList extends Component {
       </View>
     );
   };
-
   render() {
     return (
       <View style={{margin: 20, marginTop: 0}}>
-        <Text
+        {/* <Text
           style={{
             marginBottom: 0,
             fontSize: 18,
@@ -259,7 +258,7 @@ class DevicesList extends Component {
             color: '#000',
           }}>
           Devices List
-        </Text>
+        </Text> */}
 
         <TouchableOpacity onPress={this.toggleAvailableDevices}>
           <Text

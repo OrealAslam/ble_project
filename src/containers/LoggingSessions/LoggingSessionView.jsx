@@ -149,9 +149,122 @@ class LoggingSessionView extends Component {
     );
   };
 
+  // getAttachments = async () => {
+  //   const {loggingSession, loggingSessionSamples} = this.props.logging;
+  //   const {timezoneName, timezoneOffset, comment} = loggingSession;
+  //   const csvArray = [
+  //     [
+  //       'Date',
+  //       'Time',
+  //       'Milliseconds',
+  //       'Lat',
+  //       'Lon',
+  //       'Turbidity',
+  //       'Temperature',
+  //       ,
+  //       'Comment',
+  //       'Battery Level',
+  //       'Battery Raw Voltage',
+  //     ],
+  //     [timezoneName || 'UTC', '', '', '', '', 'NTU', '°C', '', '', '%', 'mV'],
+  //   ];
+  //   const commentRows = (comment || '').split('\n');
+  //   commentIterator = 0;
+  //   loggingSessionSamples.forEach(item => {
+  //     const timestamp =
+  //       Math.round(item.timestamp / 1000) * 1000 +
+  //       timezoneOffset * 60 * 60 * 1000;
+  //     const dateTimeOptions = {zone: `UTC${timezoneOffset}`};
+  //     const dateTime = DateTime.fromMillis(timestamp, dateTimeOptions);
+  //     const dateStr = dateTime.toFormat('dd LLL yyyy');
+  //     const timeStr = dateTime.toFormat('HH:mm:ss');
+  //     const millis = dateTime.toMillis();
+  //     csvArray.push(
+  //       [
+  //         dateStr,
+  //         timeStr,
+  //         millis,
+  //         item.locationLat,
+  //         item.locationLng,
+  //         item.turbidityValue,
+  //         item.temperatureValue,
+  //         ,
+  //         commentRows[commentIterator],
+  //         item.batteryLevel,
+  //         item.batteryRawVoltage,
+  //       ].join(','),
+  //     );
+  //     commentIterator++;
+  //   });
+  //   const csvStr = csvArray.join('\r\n');
+  //   const {loggingSessionId} = this.state;
+  //   const dirName = `${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/csv`;
+  //   RNFS.mkdir(dirName)
+  //     .then(r => {
+  //       console.log('XXX dir created', dirName);
+  //     })
+  //     .catch(error => {
+  //       console.log('XXX error RNFS.mkdir', error);
+  //     });
+  //   const imageFiles = await RNFS.readDir(
+  //     `${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/images`,
+  //   ).catch(e => {
+  //     console.log('XXX RNFS.readDir error 1', e);
+  //     return [];
+  //   });
+
+  //   const mapFiles = await RNFS.readDir(
+  //     `${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/mapimage`,
+  //   ).catch(e => {
+  //     console.log('XXX RNFS.readDir error 2', e);
+  //     return [];
+  //   });
+
+  //   const attachments = [];
+
+  //   imageFiles.forEach(fileItem => {
+  //     attachments.push({
+  //       path: fileItem.path,
+  //       type: 'jpg',
+  //     });
+  //   });
+
+  //   mapFiles.forEach(fileItem => {
+  //     attachments.push({
+  //       path: fileItem.path,
+  //       type: 'jpg',
+  //     });
+  //   });
+
+  //   const timestamp = loggingSession.timestamp;
+  //   const dateTime = DateTime.fromMillis(timestamp);
+
+  //   const filePath = `${dirName}/NEP-Link-data-${dateTime.toFormat(
+  //     'dd-LLL-yyyy-HHmmss',
+  //   )}.csv`;
+
+  //   const csvFile = await RNFS.writeFile(filePath, csvStr, 'utf8')
+  //     .then(() => {
+  //       // console.log("XXX file written",filePath)
+  //       // console.log("XXX attachments",attachments)
+  //       return {
+  //         path: filePath,
+  //         type: 'csv',
+  //       };
+  //     })
+  //     .catch(error => {
+  //       console.log('XXX error RNFS.writeFile', error);
+  //     });
+
+  //   attachments.push(csvFile);
+
+  //   return attachments;
+  // };
+
   getAttachments = async () => {
     const {loggingSession, loggingSessionSamples} = this.props.logging;
     const {timezoneName, timezoneOffset, comment} = loggingSession;
+
     const csvArray = [
       [
         'Date',
@@ -168,17 +281,32 @@ class LoggingSessionView extends Component {
       ],
       [timezoneName || 'UTC', '', '', '', '', 'NTU', '°C', '', '', '%', 'mV'],
     ];
+
     const commentRows = (comment || '').split('\n');
-    commentIterator = 0;
+    let commentIterator = 0;
+
     loggingSessionSamples.forEach(item => {
       const timestamp =
         Math.round(item.timestamp / 1000) * 1000 +
         timezoneOffset * 60 * 60 * 1000;
-      const dateTimeOptions = {zone: `UTC${timezoneOffset}`};
-      const dateTime = DateTime.fromMillis(timestamp, dateTimeOptions);
-      const dateStr = dateTime.toFormat('dd LLL yyyy');
-      const timeStr = dateTime.toFormat('HH:mm:ss');
-      const millis = dateTime.toMillis();
+
+      const dateTime = new Date(timestamp);
+
+      const dateStr = dateTime.toLocaleDateString('en-US', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+      }); // "dd LLL yyyy"
+
+      const timeStr = dateTime.toLocaleTimeString('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+      }); // "HH:mm:ss"
+
+      const millis = dateTime.getTime();
+
       csvArray.push(
         [
           dateStr,
@@ -196,16 +324,15 @@ class LoggingSessionView extends Component {
       );
       commentIterator++;
     });
+
     const csvStr = csvArray.join('\r\n');
     const {loggingSessionId} = this.state;
+
     const dirName = `${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/csv`;
-    RNFS.mkdir(dirName)
-      .then(r => {
-        console.log('XXX dir created', dirName);
-      })
-      .catch(error => {
-        console.log('XXX error RNFS.mkdir', error);
-      });
+    await RNFS.mkdir(dirName).catch(error => {
+      console.log('XXX error RNFS.mkdir', error);
+    });
+
     const imageFiles = await RNFS.readDir(
       `${RNFS.DocumentDirectoryPath}/loggingSessionFiles/${loggingSessionId}/images`,
     ).catch(e => {
@@ -236,17 +363,22 @@ class LoggingSessionView extends Component {
       });
     });
 
-    const timestamp = loggingSession.timestamp;
-    const dateTime = DateTime.fromMillis(timestamp);
+    const sessionTimestamp = loggingSession.timestamp;
+    const fileDateTime = new Date(sessionTimestamp);
 
-    const filePath = `${dirName}/NEP-Link-data-${dateTime.toFormat(
-      'dd-LLL-yyyy-HHmmss',
-    )}.csv`;
+    const pad = n => (n < 10 ? `0${n}` : `${n}`);
+    const formattedFileName = `${pad(
+      fileDateTime.getDate(),
+    )}-${fileDateTime.toLocaleString('default', {
+      month: 'short',
+    })}-${fileDateTime.getFullYear()}-${pad(fileDateTime.getHours())}${pad(
+      fileDateTime.getMinutes(),
+    )}${pad(fileDateTime.getSeconds())}`;
+
+    const filePath = `${dirName}/NEP-Link-data-${formattedFileName}.csv`;
 
     const csvFile = await RNFS.writeFile(filePath, csvStr, 'utf8')
       .then(() => {
-        // console.log("XXX file written",filePath)
-        // console.log("XXX attachments",attachments)
         return {
           path: filePath,
           type: 'csv',
@@ -257,7 +389,6 @@ class LoggingSessionView extends Component {
       });
 
     attachments.push(csvFile);
-
     return attachments;
   };
 
@@ -346,23 +477,29 @@ class LoggingSessionView extends Component {
   };
 
   renderSessionLineChart = logging => {
-    const {loggingSessionSamples} = logging;
-    if (!loggingSessionSamples || !loggingSessionSamples.length) {
+    const {loggingSessionSamples} = logging || {};
+
+    if (
+      !Array.isArray(loggingSessionSamples) ||
+      loggingSessionSamples.length === 0
+    ) {
       return null;
     }
-    const turbidityDataSamples = loggingSessionSamples.map(
-      ({timestamp, turbidityValue}) => [timestamp, turbidityValue],
+
+    const turbiditySamples = loggingSessionSamples.map(
+      ({timestamp, turbidityValue}) => {
+        const time = parseInt(timestamp, 10);
+        const value = parseFloat(turbidityValue); // Ensure numeric
+        const label = DateTime.fromMillis(time).toFormat('ss'); // "ss" = seconds from timestamp
+        return {timestamp: time, value, label};
+      },
     );
-    const turbiditySamples = turbidityDataSamples.map(ds => {
-      const timestamp = ds[0];
-      const value = ds[1];
-      const label = DateTime.fromMillis(parseInt(ds[0])).toFormat('ss');
-      return {timestamp, value, label};
-    });
+
     return <SessionLineChart turbiditySamples={turbiditySamples} />;
   };
 
   renderDataAverages = logging => {
+    console.log('umer khalid', logging);
     const {loggingSessionSamples, loggingSession} = logging;
     if (
       !loggingSessionSamples ||

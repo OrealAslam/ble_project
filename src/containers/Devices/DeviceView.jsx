@@ -643,7 +643,7 @@ const DeviceView = () => {
         <View
           ref={mapViewRef}
           style={{
-            width: Dimensions.get('screen').width,
+            width: 300,
             paddingLeft: 20,
             paddingRight: 20,
             backgroundColor: '#FFF0',

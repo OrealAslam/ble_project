@@ -279,7 +279,7 @@ export const getLoggingSession = loggingSessionId => async dispatch => {
   try {
     const db = await getDBConnection();
     const [results] = await db.executeSql(
-      'SELECT * FROM loggingSessionSamples WHERE id = ?',
+      'SELECT * FROM loggingSessions WHERE id = ?',
       [loggingSessionId],
     );
     const loggingSession = results.rows.length ? results.rows.item(0) : null;

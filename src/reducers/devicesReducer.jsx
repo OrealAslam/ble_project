@@ -81,6 +81,7 @@ export default function (state = initialState, action) {
       return {...state, sensorError: action.meta.sensorError};
 
     case 'DEVICE_ADD_KNOWN_DEVICES':
+      console.log(`MY DEVICE ABC ${state.device}`);
     case 'DEVICE_FETCH_KNOWN_DEVICES':
     case 'DEVICE_SAVE_DEVICE_NAME':
       deviceIdNameHash = {};

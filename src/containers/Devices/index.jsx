@@ -87,7 +87,7 @@ class Devices extends Component {
   connectToUnpairedDevice = async device => {
     try {
       console.log('Connecting to unpaired device', device);
-
+      ('');
       const bondedDevice = await BluetoothService.bondDevice(device.bleDevice); // ✅ Fixed
 
       this.props.dispatch(

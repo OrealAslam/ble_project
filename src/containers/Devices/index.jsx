@@ -86,21 +86,65 @@ class Devices extends Component {
 
   connectToUnpairedDevice = async device => {
     try {
-      console.log('Connecting to unpaired device', device);
-      ('');
-      const bondedDevice = await BluetoothService.bondDevice(device.bleDevice); // ✅ Fixed
+      console.log('🔌 Connecting to unpaired device:', device);
 
-      this.props.dispatch(
-        addBondedDevice({
-          id: bondedDevice.id,
-          name: bondedDevice.name,
-          address: bondedDevice.address,
-        }),
-      );
+      // Step 1: Try to bond/pair with the device
+      const bondedDevice = await BluetoothService.bondDevice(device.bleDevice);
+      console.log('✅ Bonded device after pairing:', bondedDevice);
 
-      this.connectToDevice(bondedDevice);
+      // Step 2: Verify that the bondedDevice is valid and usable
+      if (
+        !bondedDevice ||
+        !bondedDevice.id ||
+        typeof bondedDevice.connect !== 'function'
+      ) {
+        console.warn('❌ Invalid bonded device returned:', bondedDevice);
+        Alert.alert(
+          'Pairing Failed',
+          'The device was paired but cannot be connected.',
+        );
+        return;
+      }
+
+      // Step 3: Update Redux with newly bonded device
+      this.updateBondedDevices([bondedDevice]);
+
+      // Step 4: Wait until Redux `bondedDevicesFormatted` reflects the new bonded device
+      const waitForReduxUpdate = () => {
+        const updatedBondedDevice =
+          this.props.devices.bondedDevicesFormatted.find(
+            d =>
+              d.id === bondedDevice.id ||
+              d.address === bondedDevice.id || // classic device case
+              d.address === bondedDevice.address,
+          );
+
+        if (updatedBondedDevice) {
+          console.log(
+            '📦 Device now available in Redux — connecting...',
+            updatedBondedDevice,
+          );
+          clearInterval(this.reduxBondedCheckInterval);
+
+          this.connectToDevice({
+            ...updatedBondedDevice,
+            bleDevice: bondedDevice, // still pass for connectAndListen
+          });
+        }
+      };
+
+      // Use interval instead of blind timeout
+      this.reduxBondedCheckInterval = setInterval(waitForReduxUpdate, 300);
+
+      // Optionally set timeout to clear interval if device isn't found
+      setTimeout(() => {
+        if (this.reduxBondedCheckInterval) {
+          clearInterval(this.reduxBondedCheckInterval);
+          console.warn('⏰ Timed out waiting for Redux update after bonding');
+        }
+      }, 4000);
     } catch (error) {
-      console.warn('Bonding failed:', error);
+      console.warn('❌ Bonding failed:', error);
       Alert.alert('Bonding Failed', 'Could not pair with this device.');
     }
   };
@@ -458,15 +502,30 @@ class Devices extends Component {
 
     const {dispatch, navigation, devices} = this.props;
 
-    const deviceToConnect = devices.bondedDevicesRaw.find(
-      o => o.bleDevice.id === device.id,
-    );
+    // Set state to connecting first
+    dispatch(setDeviceConnecting(device));
 
-    const deviceDataObj = devices.bondedDevicesFormatted.find(
-      o => o.id === device.id,
-    );
+    // Determine the actual BLE device and metadata
+    const deviceToConnect = device.bleDevice || device;
 
-    if (!deviceToConnect) {
+    // Try all possible fallback strategies to get usable metadata
+    const deviceDataObj = device.deviceDataObj ||
+      devices.bondedDevicesFormatted.find(
+        o =>
+          o.id === device.id ||
+          o.id === device.bleDevice?.id ||
+          o.address === device.bleDevice?.id,
+      ) || {
+        id: deviceToConnect.id,
+        name: deviceToConnect.name || deviceToConnect.localName,
+        address: deviceToConnect.id,
+        rssi: deviceToConnect.rssi || -99,
+      }; // fallback object with just basics
+
+    console.log('✅ Final deviceDataObj:', deviceDataObj);
+    console.log('✅ Connecting to device:', deviceToConnect);
+
+    if (!deviceToConnect || !deviceToConnect.id) {
       if (retryCount >= 5) {
         Alert.alert('Connection Timeout', 'Unable to connect to the device.');
         this.setState({
@@ -484,14 +543,14 @@ class Devices extends Component {
       });
 
       setTimeout(() => {
-        console.log(`XXX retrying connection... (${retryCount + 1})`);
+        console.log(`🔁 Retrying connection... (${retryCount + 1})`);
         this.connectToDevice(device, retryCount + 1);
       }, 1000);
 
       return;
     }
 
-    // Device found, continue connecting
+    // Proceed with connection
     dispatch(setWiping(false));
     dispatch(setSensorError(false));
     dispatch(setSensorDataReceived(false));
@@ -499,18 +558,20 @@ class Devices extends Component {
     this.setState({
       awaitingDevice: false,
       connectingDevice: deviceToConnect,
-      connectedDevice: null,
+      connectedDevice: deviceToConnect, // Save the connected device in state
+      connectionAttemptStarted: true,
     });
 
     BluetoothService.connectAndListen(
-      deviceToConnect.bleDevice,
+      deviceToConnect,
       this.onConnected,
       this.onSensorDataReceived,
       this.onBatteryDataReceived,
       this.onDeviceDisconnected,
     );
 
-    dispatch(setDeviceConnected(deviceToConnect));
+    // Only update Redux state after successful connection in onConnected
+    // This happens in the onConnected callback now
 
     const routeToDeviceView = CommonActions.navigate({
       name: 'DeviceView',
@@ -524,12 +585,22 @@ class Devices extends Component {
   };
 
   onConnected = () => {
-    const {props} = this;
-    const {dispatch, navigation, devices} = props;
-    dispatch(setWiping(true));
-    setTimeout(() => {
-      dispatch(setWiping(false));
-    }, 10000);
+    const {dispatch} = this.props;
+    const {connectedDevice} = this.state;
+
+    console.log('DEVICE CONNECTED.. HURRAY!!...', connectedDevice);
+
+    if (connectedDevice) {
+      // Now that connection is successful, update Redux state
+      dispatch(setDeviceConnected(connectedDevice));
+      dispatch(setWiping(true));
+
+      setTimeout(() => {
+        dispatch(setWiping(false));
+      }, 10000);
+    } else {
+      console.warn('Device connected but no device in state');
+    }
   };
 
   onBatteryDataReceived = batteryDataObj => {
@@ -605,7 +676,7 @@ class Devices extends Component {
         temperatureEnabled = true;
         temperatureValue = parseFloat(probeDataMatch[3]);
       }
-      const sampleDateObj = new Date.now(); // Fixed: was new Date().now()
+      const sampleDateObj = Date.now(); // Fixed: was new Date().now()
       const tzOffsetMs = 0; // Simplified timezone handling
       const dataObjTimestamp = sampleDateObj - tzOffsetMs;
       dispatch(
@@ -779,26 +850,65 @@ class Devices extends Component {
   };
 
   onDeviceDisconnected = () => {
-    console.log('XXX Devices onDeviceDisconnected');
-    const {devices, dispatch, navigation} = this.props;
+    console.log('Device disconnected callback');
+    const {dispatch} = this.props;
     const {connectedDevice} = this.state;
+
     if (connectedDevice) {
-      const deviceDataObj = devices.bondedDevicesFormatted.find(
-        o => o.address === connectedDevice.address,
-      );
-      dispatch(setDeviceDisconnected(deviceDataObj));
+      console.log('Device disconnected, updating state:', connectedDevice.id);
+
+      // Update Redux state
+      dispatch(setDeviceDisconnected(connectedDevice));
+      dispatch(clearConnectedDevice());
+
+      // Update component state
+      this.setState({
+        connectingDevice: null,
+        connectedDevice: null,
+        connectionAttemptStarted: false,
+      });
     } else {
+      console.log('Device disconnected but no connected device in state');
       dispatch(clearConnectedDevice());
     }
-    dispatch(resetValues());
-    if (navigation.canGoBack()) {
-      navigation.goBack();
-    }
-    console.log('XXX Devices onDeviceDisconnected DONE');
-  };
 
+    console.log('Device disconnection processing complete');
+  };
   deviceDisconnect = () => {
     const {dispatch} = this.props;
+    const {connectedDevice} = this.state;
+
+    console.log('Disconnecting device:', connectedDevice);
+
+    if (connectedDevice) {
+      // First update the Redux state
+      dispatch(setDeviceDisconnecting(connectedDevice));
+
+      // Then perform the actual disconnection
+      BluetoothService.disconnectConnectedDevice()
+        .then(() => {
+          console.log('Device disconnected successfully');
+          dispatch(setDeviceDisconnected(connectedDevice));
+          dispatch(clearConnectedDevice());
+
+          // Update component state
+          this.setState({
+            connectingDevice: null,
+            connectedDevice: null,
+            connectionAttemptStarted: false,
+            awaitingDevice: false,
+          });
+        })
+        .catch(error => {
+          console.error('Error disconnecting device:', error);
+          // Still update the Redux state to disconnected even if there was an error
+          dispatch(setDeviceDisconnected(connectedDevice));
+          dispatch(clearConnectedDevice());
+        });
+    } else {
+      console.warn('No connected device to disconnect');
+      dispatch(clearConnectedDevice());
+    }
   };
 
   cancelConnectToDevice = () => {
@@ -831,10 +941,10 @@ class Devices extends Component {
   };
 
   renderBody = (props, state) => {
-    console.log(
-      'XXX this.enterDemoModeButtonPress',
-      this.enterDemoModeButtonPress,
-    );
+    // console.log(
+    //   'XXX this.enterDemoModeButtonPress',
+    //   this.enterDemoModeButtonPress,
+    // );
 
     const {devices} = props;
     const connectingDeviceLabel = state.connectingDevice

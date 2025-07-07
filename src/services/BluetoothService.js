@@ -18,9 +18,16 @@ export default class BluetoothService {
     this.isScanning = false;
     this.bluetoothStateFunction = null;
     this.updateFunction = null;
+    // ORIGINAL ARRAY
+    // this.serviceIdsArray = [
+    //   'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
+    //   '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
+    // ];
+
+    // PRINTER ARRAY FOR TESTING PURPOSE
     this.serviceIdsArray = [
-      'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
-      '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
+      '000018f0-0000-1000-8000-00805f9b34fb',
+      'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
     ];
     this.manager = new BleManager();
 
@@ -95,10 +102,40 @@ export default class BluetoothService {
 
   static async bondDevice(device, reduxDispatch) {
     try {
-      const bondedDevice = await RNBluetoothClassic.pairDevice(device.id);
-      console.log('✅ Device bonded successfully:', bondedDevice);
+      console.log('yahan console kro', device);
+      try {
+        console.log('pairing device', device.id);
+        const paired = await RNBluetoothClassic.pairDevice(device.id);
+        console.log('✅ Device paired:', paired);
+      } catch (pairError) {
+        console.error('❌ Pairing failed:', pairError);
+        throw new Error(
+          'Pairing failed. Please ensure the device is discoverable.',
+        );
+      }
+
+      // Ensure Redux is updated
       await this.updateBondedDevices(reduxDispatch);
-      return bondedDevice;
+
+      // Double check: does it have .connect()?
+      if (paired && typeof paired.connect === 'function') {
+        return paired;
+      }
+
+      console.warn(
+        '⚠️ Paired device missing .connect(). Fetching from getBondedDevices...',
+      );
+
+      const bondedDevices = await RNBluetoothClassic.getBondedDevices();
+      const fullDevice = bondedDevices.find(
+        d => d.id === device.id || d.address === device.id,
+      );
+
+      if (fullDevice && typeof fullDevice.connect === 'function') {
+        return fullDevice;
+      }
+
+      throw new Error('Bonded device not found or invalid');
     } catch (error) {
       console.error('❌ Failed to bond device:', error);
       throw error;
@@ -235,6 +272,8 @@ export default class BluetoothService {
     }
   };
 
+  // In src/services/BluetoothService.js - Update connectAndListen method
+
   static connectAndListen = (
     device,
     onDeviceConnectedHandler,
@@ -244,11 +283,25 @@ export default class BluetoothService {
   ) => {
     console.log('🔗 connectAndListen', device);
 
-    const connectedDiscoveredAction = () => {
-      device.monitorCharacteristicForService(
+    // Get the actual BLE device object if we received a wrapper
+    const actualDevice = device.bleDevice || device;
+    const deviceId = actualDevice.id;
+
+    if (!deviceId) {
+      console.error('Invalid device object - missing ID:', device);
+      return;
+    }
+
+    const connectedDiscoveredAction = connectedDevice => {
+      // Use the connected device instance, not the original one
+      connectedDevice.monitorCharacteristicForService(
         '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
         '266b64b4-19ee-4941-8253-650b4d7ab197',
         (error, characteristic) => {
+          if (error) {
+            console.error('Battery monitoring error:', error);
+            return;
+          }
           if (characteristic) {
             this.stopScan();
             try {
@@ -263,10 +316,14 @@ export default class BluetoothService {
         },
       );
 
-      device.monitorCharacteristicForService(
+      connectedDevice.monitorCharacteristicForService(
         'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
         '9915b449-2b52-429b-bfd0-ab634002404d',
         (error, characteristic) => {
+          if (error) {
+            console.error('Sensor monitoring error:', error);
+            return;
+          }
           if (characteristic) {
             this.stopScan();
             try {
@@ -279,47 +336,82 @@ export default class BluetoothService {
         },
       );
 
-      this.connectedDevice = device;
+      this.connectedDevice = connectedDevice;
     };
 
-    this.manager.onDeviceDisconnected(device.id, (error, d) => {
+    this.manager.onDeviceDisconnected(deviceId, (error, d) => {
+      console.log('Device disconnected event:', deviceId, error);
       if (onDeviceDisconnectedHandler) {
         onDeviceDisconnectedHandler();
       }
     });
 
     this.manager
-      .isDeviceConnected(device.id)
+      .isDeviceConnected(deviceId)
       .then(isConnected => {
+        console.log(
+          `Device ${deviceId} connection status:`,
+          isConnected ? 'connected' : 'disconnected',
+        );
         if (isConnected) {
-          connectedDiscoveredAction();
-        } else {
+          // If already connected, use the existing connection
           this.manager
-            .connectToDevice(device.id, {
+            .connectToDevice(deviceId)
+            .then(connectedDevice => {
+              connectedDiscoveredAction(connectedDevice);
+              onDeviceConnectedHandler();
+            })
+            .catch(error => {
+              console.error('Error retrieving connected device:', error);
+            });
+        } else {
+          // Connect to device with retry mechanism
+          this.manager
+            .connectToDevice(deviceId, {
               timeout: 15000,
               autoConnect: true,
               requestMTU: 200,
             })
-            .then(device => {
+            .then(connectedDevice => {
+              console.log('Successfully connected to device:', deviceId);
               onDeviceConnectedHandler();
               this.manager
                 .requestConnectionPriorityForDevice(
-                  device.id,
+                  deviceId,
                   ConnectionPriority.High,
                 )
                 .then(() => {
-                  device.discoverAllServicesAndCharacteristics().then(() => {
-                    connectedDiscoveredAction();
-                  });
+                  connectedDevice
+                    .discoverAllServicesAndCharacteristics()
+                    .then(() => {
+                      console.log('Services discovered for device:', deviceId);
+                      connectedDiscoveredAction(connectedDevice);
+                    })
+                    .catch(error => {
+                      console.error('Service discovery error:', error);
+                    });
+                })
+                .catch(error => {
+                  console.error('Connection priority error:', error);
+                  // Try to continue anyway
+                  connectedDevice
+                    .discoverAllServicesAndCharacteristics()
+                    .then(() => connectedDiscoveredAction(connectedDevice))
+                    .catch(e =>
+                      console.error(
+                        'Service discovery error after priority error:',
+                        e,
+                      ),
+                    );
                 });
             })
             .catch(error => {
-              console.error('Connect error:', error);
+              console.error(`Connect error for device ${deviceId}:`, error);
             });
         }
       })
       .catch(error => {
-        console.error('Connection check error:', error);
+        console.error(`Connection check error for device ${deviceId}:`, error);
       });
   };
 

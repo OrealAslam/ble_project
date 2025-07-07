@@ -195,25 +195,31 @@
 import {BLUETOOTH_DEVICE_NAME_REGEX} from '../constants/constants';
 import {getDBConnection} from '../utils/db';
 
+// In src/actions/DeviceActions.jsx
+
 export function setDeviceConnecting(deviceDataObj) {
+  console.log('🔵 Device connecting action triggered', deviceDataObj);
   return dispatch => {
     dispatch({type: 'DEVICE_CONNECTING', meta: {...deviceDataObj}});
   };
 }
 
 export function setDeviceConnected(deviceDataObj) {
+  console.log('🟢 Device connected action triggered', deviceDataObj);
   return dispatch => {
     dispatch({type: 'DEVICE_CONNECTED', meta: {...deviceDataObj}});
   };
 }
 
 export function setDeviceDisconnecting(deviceDataObj) {
+  console.log('🟠 Device disconnecting action triggered', deviceDataObj);
   return dispatch => {
     dispatch({type: 'DEVICE_DISCONNECTING', meta: {...deviceDataObj}});
   };
 }
 
 export function setDeviceDisconnected(deviceDataObj) {
+  console.log('🔴 Device disconnected action triggered', deviceDataObj);
   return dispatch => {
     dispatch({type: 'DEVICE_DISCONNECTED', meta: {...deviceDataObj}});
   };
@@ -260,11 +266,41 @@ export const setDiscoveredDevices = discoveredDevices => async dispatch => {
   }
 };
 
-export const setBondedDevices = bondedDevices => async dispatch => {
+export const setBondedDevices = bondedDevices => async (dispatch, getState) => {
   try {
+    if (!bondedDevices || bondedDevices.length === 0) {
+      console.log('⏭️ Skipping DEVICE_SET_BONDED_DEVICES: empty list');
+      return;
+    }
+
+    const {
+      devices: {bondedDevicesRaw: currentBonded},
+    } = getState();
+
+    const devicesAreSame = (a, b) => {
+      if (a.length !== b.length) {
+        return false;
+      }
+      return a.every(deviceA =>
+        b.some(
+          deviceB =>
+            deviceA.id === deviceB.id &&
+            (deviceA.name === deviceB.name || !deviceA.name || !deviceB.name),
+        ),
+      );
+    };
+
+    const isSame = devicesAreSame(bondedDevices, currentBonded);
+    console.log('isSame check result:', isSame);
+
+    if (isSame) {
+      console.log('⏭️ Skipping DEVICE_SET_BONDED_DEVICES: identical list');
+      return;
+    }
+
     dispatch({type: 'DEVICE_SET_BONDED_DEVICES', payload: {bondedDevices}});
   } catch (e) {
-    console.log('Error in setBondedDevices', e);
+    console.log('Error in setBondedDevices:', e);
   }
 };
 
@@ -273,7 +309,7 @@ export const addBondedDevice = newBondedDevice => async dispatch => {
     const db = await getDBConnection();
     await db.executeSql(
       'REPLACE INTO knownDevices (id, name, address) VALUES (?, ?, ?)',
-      [newBondedDevice.id, newBondedDevice.name, newBondedDevice.address],
+      [newBondedDevice.id, newBondedDevice.name, newBondedDevice.id],
     );
     dispatch({type: 'DEVICE_ADD_BONDED_DEVICE', payload: {newBondedDevice}});
   } catch (e) {
@@ -281,20 +317,39 @@ export const addBondedDevice = newBondedDevice => async dispatch => {
   }
 };
 
-export const addKnownDevices = devices => async dispatch => {
+export const addKnownDevices = devices => async (dispatch, getState) => {
   try {
     const db = await getDBConnection();
     for (const device of devices) {
       await db.executeSql(
         'REPLACE INTO knownDevices (id, name, address) VALUES (?, ?, ?)',
-        [device.id, device.name, device.address],
+        [device.id, device.name, device.id],
       );
     }
+
     const [results] = await db.executeSql('SELECT * FROM knownDevices');
     const knownDevices = [];
     for (let i = 0; i < results.rows.length; i++) {
       knownDevices.push(results.rows.item(i));
     }
+
+    const {
+      devices: {knownDevices: currentKnownDevices},
+    } = getState();
+
+    const isSame =
+      knownDevices.length === currentKnownDevices.length &&
+      knownDevices.every(
+        (d, i) =>
+          d.id === currentKnownDevices[i]?.id &&
+          d.name === currentKnownDevices[i]?.name,
+      );
+
+    // if (isSame) {
+    //   console.log('⏭️ Skipping DEVICE_ADD_KNOWN_DEVICES: no change');
+    //   return;
+    // }
+
     dispatch({type: 'DEVICE_ADD_KNOWN_DEVICES', payload: {knownDevices}});
   } catch (e) {
     console.log('Error in addKnownDevices', e);

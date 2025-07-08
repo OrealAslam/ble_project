@@ -254,8 +254,9 @@ export function setSensorError(sensorError) {
 
 export const setDiscoveredDevices = discoveredDevices => async dispatch => {
   try {
-    const filtered = discoveredDevices.filter(({name}) =>
-      name?.match(BLUETOOTH_DEVICE_NAME_REGEX),
+    // Show all BLE devices that have a name (not just NEP-LINK devices)
+    const filtered = discoveredDevices.filter(({bleDevice}) => 
+      bleDevice && (bleDevice.name || bleDevice.localName)
     );
     dispatch({
       type: 'DEVICE_SET_DISCOVERED_DEVICES',
@@ -388,4 +389,39 @@ export const saveDeviceName = (deviceId, deviceName) => async dispatch => {
   } catch (e) {
     console.log('Error in saveDeviceName', e);
   }
+};
+
+// BLE Scan/Connect/Disconnect Actions
+export const scanStart = () => {
+  console.log('[BLE] Scan started');
+  return { type: 'SCAN_START' };
+};
+export const scanStop = () => {
+  console.log('[BLE] Scan stopped');
+  return { type: 'SCAN_STOP' };
+};
+export const scanError = error => {
+  console.error('[BLE] Scan error:', error);
+  return { type: 'SCAN_ERROR', error };
+};
+export const setAvailableDevices = devices => {
+  console.log('[BLE] Available devices:', devices);
+  return { type: 'SET_AVAILABLE_DEVICES', devices };
+};
+
+export const deviceConnecting = device => {
+  console.log('[BLE] Connecting to device:', device);
+  return { type: 'DEVICE_CONNECTING', meta: device };
+};
+export const deviceConnectError = error => {
+  console.error('[BLE] Device connect error:', error);
+  return { type: 'DEVICE_CONNECT_ERROR', error };
+};
+export const deviceDisconnecting = device => {
+  console.log('[BLE] Disconnecting device:', device);
+  return { type: 'DEVICE_DISCONNECTING', meta: device };
+};
+export const deviceDisconnectError = error => {
+  console.error('[BLE] Device disconnect error:', error);
+  return { type: 'DEVICE_DISCONNECT_ERROR', error };
 };

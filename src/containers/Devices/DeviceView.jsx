@@ -407,7 +407,7 @@ import ViewShot, {captureRef} from 'react-native-view-shot';
 import RNFS from 'react-native-fs';
 import uuid from 'react-native-uuid';
 
-import BluetoothService from '../../services/BluetoothService';
+import BluetoothService from '../../services/BluetoothService1';
 
 import {
   startLogging,

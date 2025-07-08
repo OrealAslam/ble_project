@@ -6,6 +6,7 @@ import {
   PermissionsAndroid,
   Platform,
   Alert,
+  ScrollView,
 } from 'react-native';
 
 import BluetoothService from '../../services/BluetoothService';
@@ -30,6 +31,14 @@ import {
   addKnownDevices,
   fetchKnownDevices,
   addBondedDevice,
+  scanStart,
+  scanStop,
+  scanError,
+  setAvailableDevices,
+  deviceConnecting,
+  deviceConnectError,
+  deviceDisconnecting,
+  deviceDisconnectError,
 } from '../../actions/DeviceActions';
 import {stopLogging} from '../../actions/LoggingActions';
 
@@ -85,145 +94,102 @@ class Devices extends Component {
   // };
 
   connectToUnpairedDevice = async device => {
+    const { dispatch, devices } = this.props;
+    if (devices.connectingDevice) return;
     try {
-      console.log('🔌 Connecting to unpaired device:', device);
-
-      // Step 1: Try to bond/pair with the device
-      const bondedDevice = await BluetoothService.bondDevice(device.bleDevice);
-      console.log('✅ Bonded device after pairing:', bondedDevice);
-
-      // Step 2: Verify that the bondedDevice is valid and usable
-      if (
-        !bondedDevice ||
-        !bondedDevice.id ||
-        typeof bondedDevice.connect !== 'function'
-      ) {
-        console.warn('❌ Invalid bonded device returned:', bondedDevice);
-        Alert.alert(
-          'Pairing Failed',
-          'The device was paired but cannot be connected.',
-        );
-        return;
-      }
-
-      // Step 3: Update Redux with newly bonded device
-      this.updateBondedDevices([bondedDevice]);
-
-      // Step 4: Wait until Redux `bondedDevicesFormatted` reflects the new bonded device
-      const waitForReduxUpdate = () => {
-        const updatedBondedDevice =
-          this.props.devices.bondedDevicesFormatted.find(
-            d =>
-              d.id === bondedDevice.id ||
-              d.address === bondedDevice.id || // classic device case
-              d.address === bondedDevice.address,
-          );
-
-        if (updatedBondedDevice) {
-          console.log(
-            '📦 Device now available in Redux — connecting...',
-            updatedBondedDevice,
-          );
-          clearInterval(this.reduxBondedCheckInterval);
-
-          this.connectToDevice({
-            ...updatedBondedDevice,
-            bleDevice: bondedDevice, // still pass for connectAndListen
-          });
-        }
+      dispatch(deviceConnecting(device));
+      const connectedDevice = await BluetoothService.connectToDevice(device.bleDevice);
+      const deviceToUpdate = {
+        ...device,
+        bleDevice: connectedDevice,
+        isConnected: true,
       };
-
-      // Use interval instead of blind timeout
-      this.reduxBondedCheckInterval = setInterval(waitForReduxUpdate, 300);
-
-      // Optionally set timeout to clear interval if device isn't found
-      setTimeout(() => {
-        if (this.reduxBondedCheckInterval) {
-          clearInterval(this.reduxBondedCheckInterval);
-          console.warn('⏰ Timed out waiting for Redux update after bonding');
-        }
-      }, 4000);
+      dispatch(addBondedDevice(deviceToUpdate));
+      dispatch(setDeviceConnected(deviceToUpdate));
+      console.log('[BLE] Device connected:', deviceToUpdate);
     } catch (error) {
-      console.warn('❌ Bonding failed:', error);
-      Alert.alert('Bonding Failed', 'Could not pair with this device.');
+      dispatch(deviceConnectError('Failed to connect. Try again.'));
+      console.error('[BLE] Device connect error (try/catch):', error);
     }
   };
 
   scanTimeout = null;
-
-  // startScan = async () => {
-  //   console.log('XXX startScan');
-
-  //   const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
-  //   if (!isBluetoothEnabled) {
-  //     Alert.alert(
-  //       'Bluetooth Disabled',
-  //       'Please turn on Bluetooth to scan for nearby devices.',
-  //       [{text: 'OK'}],
-  //     );
-  //     return;
-  //   }
-
-  //   BluetoothService.startScan(
-  //     () => {
-  //       console.log('XXX bluetoothStateFunction');
-  //     },
-  //     devicesFound => {
-  //       console.log('XXX updateFunction', devicesFound);
-
-  //       // Filter bonded and unbonded devices
-  //       const bonded = devicesFound.filter(d => d.bonded === true);
-  //       const unbonded = devicesFound.filter(d => d.bonded !== true);
-
-  //       // Update bonded devices via Redux
-  //       this.updateBondedDevices(bonded);
-
-  //       // Update unpaired/available devices in component state
-  //       this.setState({availableDevices: unbonded});
-  //     },
-  //   );
-  // };
+  isScanning = false;
+  isConnecting = false;
 
   startScan = async () => {
-    console.log('📡 Starting BLE scan...');
-
-    const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
-    if (!isBluetoothEnabled) {
-      Alert.alert(
-        'Bluetooth Disabled',
-        'Please turn on Bluetooth to scan for nearby devices.',
-        [{text: 'OK'}],
+    const { dispatch, devices } = this.props;
+    if (devices.isScanning) return;
+    try {
+      dispatch(scanStart());
+      const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
+      if (!isBluetoothEnabled) {
+        dispatch(scanError('Bluetooth Disabled'));
+        Alert.alert('Bluetooth Disabled', 'Please turn on Bluetooth to scan for nearby devices.', [{ text: 'OK' }]);
+        return;
+      }
+      BluetoothService.startScan(
+        () => { console.log('[BLE] Scan callback started'); },
+        devicesFound => {
+          const bonded = devicesFound.filter(d => d.bonded === true);
+          const unbonded = devicesFound.filter(d => d.bonded !== true);
+          this.updateBondedDevices(bonded);
+          dispatch(setAvailableDevices(unbonded));
+        },
+        dispatch,
       );
-      return;
+      if (this.scanTimeout) clearTimeout(this.scanTimeout);
+      this.scanTimeout = setTimeout(() => {
+        this.stopScan();
+      }, 10000);
+      console.log('[BLE] Scan started for 10 seconds');
+    } catch (error) {
+      dispatch(scanError(error.message || error));
+      console.error('[BLE] Scan error (try/catch):', error);
     }
-
-    BluetoothService.startScan(
-      () => {
-        console.log('🟢 Bluetooth scan started.');
-      },
-      devicesFound => {
-        console.log('📍 Devices found:', devicesFound);
-
-        const bonded = devicesFound.filter(d => d.bonded === true);
-        const unbonded = devicesFound.filter(d => d.bonded !== true);
-
-        // Update bonded devices via Redux
-        this.updateBondedDevices(bonded);
-
-        // Update unpaired devices in state
-        this.setState({availableDevices: unbonded});
-
-        // 🔔 Show alert if at least one unpaired BLE device is found
-        if (unbonded.length > 0) {
-          const firstDeviceName = unbonded[0].name || 'Unnamed Device';
-        } else {
-          console.log('❌ No unpaired devices found.');
-        }
-      },
-    );
   };
 
-  getBluetoothPermissionsAndStartBluetoothProcesses = async () => {
+  stopScan = () => {
+    const { dispatch, devices } = this.props;
+    if (!devices.isScanning) return;
+    try {
+      BluetoothService.stopScan();
+      if (this.scanTimeout) {
+        clearTimeout(this.scanTimeout);
+        this.scanTimeout = null;
+      }
+      dispatch(scanStop());
+      console.log('[BLE] Scan stopped');
+    } catch (error) {
+      dispatch(scanError(error.message || error));
+      console.error('[BLE] Stop scan error:', error);
+    }
+  };
+
+  deviceDisconnect = () => {
+    const { dispatch, devices } = this.props;
+    const connectedDevice = devices.connectedDevice;
+    if (!connectedDevice) return;
+    try {
+      dispatch(deviceDisconnecting(connectedDevice));
+      BluetoothService.disconnectConnectedDevice()
+        .then(() => {
+          dispatch(setDeviceDisconnected(connectedDevice));
+          dispatch(clearConnectedDevice());
+          console.log('[BLE] Device disconnected:', connectedDevice);
+        })
+        .catch(error => {
+          dispatch(deviceDisconnectError('Could not disconnect from device.'));
+          console.error('[BLE] Device disconnect error (promise):', error);
+          Alert.alert('Disconnect Failed', 'Could not disconnect from device.');
+        });
+    } catch (error) {
+      dispatch(deviceDisconnectError('Could not disconnect from device.'));
+      console.error('[BLE] Device disconnect error (try/catch):', error);
+    }
+  };
+
+  async getBluetoothPermissionsAndStartBluetoothProcesses() {
     let fineLocationPermission = true;
     let bluetoothScanPermission = true;
     let bluetoothConnectPermission = true;
@@ -276,7 +242,7 @@ class Devices extends Component {
     console.log('KKK bluetoothConnectPermission', bluetoothConnectPermission);
 
     this.startScan.call(this);
-  };
+  }
 
   componentDidUpdate(prevProps, prevState) {
     const {logging, dispatch, demo} = this.props;
@@ -319,6 +285,8 @@ class Devices extends Component {
   }
 
   componentWillUnmount() {
+    this.stopScan();
+    if (this.locationUpdateId) clearInterval(this.locationUpdateId);
     this.props.dispatch(resetValues());
   }
 
@@ -562,8 +530,10 @@ class Devices extends Component {
       connectionAttemptStarted: true,
     });
 
+    // Always pass the BLE device instance to connectAndListen
+    const bleDeviceInstance = device.bleDevice || deviceToConnect;
     BluetoothService.connectAndListen(
-      deviceToConnect,
+      bleDeviceInstance,
       this.onConnected,
       this.onSensorDataReceived,
       this.onBatteryDataReceived,
@@ -969,7 +939,7 @@ class Devices extends Component {
           connectToDeviceHandler={this.connectToDevice}
           cancelConnectToDeviceHandler={this.cancelConnectToDevice}
         />
-        <View>
+        <ScrollView showsVerticalScrollIndicator={false}>
           <NepLinkHeader />
           {!(
             this.state.bluetoothAvailable &&
@@ -991,16 +961,21 @@ class Devices extends Component {
               <DevicesList
                 bondedDevices={devices.bondedDevicesFormatted}
                 connectToDeviceHandler={this.connectToDevice}
-                unpairedDevices={this.state.availableDevices}
+                unpairedDevices={devices.availableDevices}
+                isScanning={devices.isScanning}
+                connectingDevice={devices.connectingDevice}
+                connectError={devices.connectError}
+                disconnectDeviceHandler={this.deviceDisconnect}
+                startScanHandler={this.startScan}
+                stopScanHandler={this.stopScan}
                 connectToUnpairedDeviceHandler={this.connectToUnpairedDevice}
-                startScanHandler={this.startScan} // ✅ required!
               />
               <DevicesListButtons
                 enterDemoModeButtonPressHandler={this.enterDemoModeButtonPress}
               />
             </>
           )}
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   };

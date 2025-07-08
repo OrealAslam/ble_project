@@ -13,6 +13,13 @@ const initialState = {
   deviceIdNameHash: {},
   device: null,
   status: 'disconnected',
+  isScanning: false,
+  scanError: null,
+  availableDevices: [],
+  connectingDevice: null,
+  connectError: null,
+  disconnecting: false,
+  disconnectError: null,
 };
 
 export default function (state = initialState, action) {
@@ -22,14 +29,16 @@ export default function (state = initialState, action) {
   let newBondedDevice;
 
   switch (action.type) {
+    case 'SCAN_START':
+      return { ...state, isScanning: true, scanError: null, availableDevices: [] };
+    case 'SCAN_STOP':
+      return { ...state, isScanning: false };
+    case 'SCAN_ERROR':
+      return { ...state, isScanning: false, scanError: action.error };
+    case 'SET_AVAILABLE_DEVICES':
+      return { ...state, availableDevices: action.devices };
     case 'DEVICE_CONNECTING':
-      return {
-        ...state,
-        connectionStateChanging: true,
-        device: action.meta,
-        status: 'connecting',
-      };
-
+      return { ...state, connectingDevice: action.meta, connectError: null };
     case 'DEVICE_CONNECTED':
       // Make sure we properly set the device as connected in the state
       newBondedDevicesFormatted = state.bondedDevicesFormatted.map(device => {
@@ -53,14 +62,10 @@ export default function (state = initialState, action) {
         status: 'connected',
         bondedDevicesFormatted: newBondedDevicesFormatted,
       };
+    case 'DEVICE_CONNECT_ERROR':
+      return { ...state, connectingDevice: null, connectError: action.error };
     case 'DEVICE_DISCONNECTING':
-      return {
-        ...state,
-        connectionStateChanging: true,
-        device: action.meta,
-        status: 'disconnecting',
-      };
-
+      return { ...state, disconnecting: true, disconnectError: null };
     case 'DEVICE_DISCONNECTED':
     case 'DEVICE_CLEAR_CONNECTED_DEVICE':
       // Make sure to clean up the connected status for all devices
@@ -177,15 +182,30 @@ export default function (state = initialState, action) {
         action.payload.discoveredDevices,
       );
       action.payload.discoveredDevices
-        .filter(({name, address}) => {
+        .filter(({bleDevice, address}) => {
+          // Only show devices that have a name and are not already bonded
+          const deviceName = bleDevice?.name || bleDevice?.localName;
+          if (!deviceName) return false;
+          
           const bondedDevice = state.bondedDevicesRaw.find(
-            bondedDevice => bondedDevice.address === address,
+            bondedDevice => bondedDevice.address === address || bondedDevice.id === address,
           );
-          return !bondedDevice && name?.match(BLUETOOTH_DEVICE_NAME_REGEX);
+          return !bondedDevice;
         })
-        .forEach(newDevice => {
-          newDevice.lastSeenAt = currentTimestamp;
-          unpairedDevices.push({...newDevice});
+        .forEach(discoveredDevice => {
+          // Extract device info from the bleDevice property
+          const deviceName = discoveredDevice.bleDevice?.name || discoveredDevice.bleDevice?.localName || 'Unnamed Device';
+          const deviceId = discoveredDevice.bleDevice?.id || discoveredDevice.address;
+          
+          const newDevice = {
+            id: deviceId,
+            address: deviceId,
+            name: deviceName,
+            bleDevice: discoveredDevice.bleDevice,
+            lastSeenAt: currentTimestamp,
+          };
+          
+          unpairedDevices.push(newDevice);
         });
       console.log('XXXX unpairedDevices 1', unpairedDevices);
       unpairedDevices.forEach(unpairedDevice => {
@@ -255,7 +275,7 @@ const filterAndSortDevices = (devices, deviceIdNameHash, state) => {
   });
 
   const filtered = normalizedDevices
-    .filter(({name}) => name?.match(BLUETOOTH_DEVICE_NAME_REGEX))
+    .filter(({name}) => name && name.trim().length > 0) // Show all devices with names
     .map(device => {
       const customName = deviceIdNameHash[device.address];
       return {

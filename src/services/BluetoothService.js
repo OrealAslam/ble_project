@@ -6,8 +6,10 @@ import {
   ScanMode,
 } from 'react-native-ble-plx';
 import RNBluetoothClassic from 'react-native-bluetooth-classic';
+import Geolocation from '@react-native-community/geolocation';
 import {PermissionsAndroid, Platform, Alert, Linking} from 'react-native';
 import base64 from 'base-64';
+// import {DateTime} from 'luxon';
 import {setDiscoveredDevices} from '../actions/DeviceActions';
 
 export default class BluetoothService {
@@ -18,17 +20,11 @@ export default class BluetoothService {
     this.isScanning = false;
     this.bluetoothStateFunction = null;
     this.updateFunction = null;
-    // ORIGINAL ARRAY
-    // this.serviceIdsArray = [
-    //   'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
-    //   '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
-    // ];
-
-    // PRINTER ARRAY FOR TESTING PURPOSE
     this.serviceIdsArray = [
-      '000018f0-0000-1000-8000-00805f9b34fb',
-      'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
+      'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
+      '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
     ];
+
     this.manager = new BleManager();
 
     const onStateChangeSubscription = this.manager.onStateChange(state => {
@@ -51,7 +47,7 @@ export default class BluetoothService {
               this.startScan(
                 this.bluetoothStateFunction,
                 this.updateFunction,
-                this.reduxDispatch,
+                this.reduxDispatch, // ✅ Pass redux dispatch
               );
             }
           })
@@ -64,6 +60,120 @@ export default class BluetoothService {
     }, true);
   }
 
+  static async connectToDevice(device) {
+    try {
+      console.log('🔗 Connecting to BLE device:', device);
+      
+      // For BLE devices, we connect directly (no pairing needed like Classic Bluetooth)
+      const connectedDevice = await this.manager.connectToDevice(device.id);
+      console.log('✅ BLE device connected successfully:', connectedDevice);
+      
+      // Discover services after connection
+      await connectedDevice.discoverAllServicesAndCharacteristics();
+      console.log('✅ Services discovered for device:', connectedDevice.id);
+      
+      return connectedDevice;
+    } catch (error) {
+      console.error('❌ Failed to connect to BLE device:', error);
+      throw error;
+    }
+  }
+
+  static async bondDevice(device) {
+    try {
+      // For BLE devices, we should use connectToDevice instead of Classic Bluetooth pairing
+      if (device.bleDevice) {
+        return await this.connectToDevice(device.bleDevice);
+      }
+      
+      // Fallback for Classic Bluetooth devices (if any)
+      const bondedDevice = await RNBluetoothClassic.pairDevice(device.id);
+      console.log('✅ Classic Bluetooth device bonded successfully:', bondedDevice);
+      return bondedDevice;
+    } catch (error) {
+      console.error('❌ Failed to bond device:', error);
+      throw error;
+    }
+  }
+
+  static async ensureBleScanReady() {
+    if (Platform.OS !== 'android') {
+      return true; // iOS handles this differently
+    }
+
+    try {
+      // 🔐 Request BLE + Location permissions
+      const permissions = [
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+      ];
+
+      const granted = await PermissionsAndroid.requestMultiple(permissions);
+
+      const allGranted = Object.values(granted).every(
+        result => result === PermissionsAndroid.RESULTS.GRANTED,
+      );
+
+      if (!allGranted) {
+        Alert.alert(
+          'Permission Denied',
+          'Please grant all required Bluetooth and Location permissions.',
+        );
+        return false;
+      }
+
+      // 📍 Check if location services (GPS) are turned ON
+      // const gpsEnabled = await new Promise(resolve => {
+      //   let resolved = false;
+
+      //   Geolocation.getCurrentPosition(
+      //     () => {
+      //       resolved = true;
+      //       resolve(true);
+      //     },
+      //     error => {
+      //       console.warn('GPS error', error);
+      //       if (!resolved) {
+      //         resolve(false);
+      //       }
+      //     },
+      //     {enableHighAccuracy: true, timeout: 5000, maximumAge: 0},
+      //   );
+
+      //   setTimeout(() => {
+      //     if (!resolved) {
+      //       resolve(false);
+      //     } // fallback to avoid hanging forever
+      //   }, 6000);
+      // });
+
+      // if (!gpsEnabled) {
+      //   Alert.alert(
+      //     'Enable GPS',
+      //     'Please enable Location (GPS) services to scan for BLE devices.',
+      //     [
+      //       {text: 'Cancel', style: 'cancel'},
+      //       {
+      //         text: 'Open Settings',
+      //         onPress: () => Linking.openSettings(),
+      //       },
+      //     ],
+      //   );
+      //   return false;
+      // }
+
+      return true;
+    } catch (e) {
+      console.error('ensureBleScanReady error:', e);
+      Alert.alert(
+        'BLE Setup Error',
+        'Something went wrong checking Bluetooth/Location readiness.',
+      );
+      return false;
+    }
+  }
+
   static async requestBluetoothPermissions() {
     if (Platform.OS === 'android') {
       const permissions = [
@@ -73,6 +183,7 @@ export default class BluetoothService {
       ];
 
       const granted = await PermissionsAndroid.requestMultiple(permissions);
+
       const allGranted = Object.values(granted).every(
         res => res === PermissionsAndroid.RESULTS.GRANTED,
       );
@@ -80,81 +191,6 @@ export default class BluetoothService {
       if (!allGranted) {
         throw new Error('Bluetooth permissions not granted.');
       }
-    }
-  }
-
-  static async ensureBleScanReady() {
-    if (Platform.OS !== 'android') {
-      return true;
-    }
-
-    try {
-      await this.requestBluetoothPermissions();
-      return true;
-    } catch (e) {
-      Alert.alert(
-        'BLE Setup Error',
-        e.message || 'Bluetooth/Location permission check failed.',
-      );
-      return false;
-    }
-  }
-
-  static async bondDevice(device, reduxDispatch) {
-    try {
-      console.log('yahan console kro', device);
-      try {
-        console.log('pairing device', device.id);
-        const paired = await RNBluetoothClassic.pairDevice(device.id);
-        console.log('✅ Device paired:', paired);
-      } catch (pairError) {
-        console.error('❌ Pairing failed:', pairError);
-        throw new Error(
-          'Pairing failed. Please ensure the device is discoverable.',
-        );
-      }
-
-      // Ensure Redux is updated
-      await this.updateBondedDevices(reduxDispatch);
-
-      // Double check: does it have .connect()?
-      if (paired && typeof paired.connect === 'function') {
-        return paired;
-      }
-
-      console.warn(
-        '⚠️ Paired device missing .connect(). Fetching from getBondedDevices...',
-      );
-
-      const bondedDevices = await RNBluetoothClassic.getBondedDevices();
-      const fullDevice = bondedDevices.find(
-        d => d.id === device.id || d.address === device.id,
-      );
-
-      if (fullDevice && typeof fullDevice.connect === 'function') {
-        return fullDevice;
-      }
-
-      throw new Error('Bonded device not found or invalid');
-    } catch (error) {
-      console.error('❌ Failed to bond device:', error);
-      throw error;
-    }
-  }
-
-  static async updateBondedDevices(reduxDispatch) {
-    try {
-      const bondedDevices = await RNBluetoothClassic.getBondedDevices();
-      console.log('📎 Synced bonded devices:', bondedDevices);
-
-      if (reduxDispatch) {
-        reduxDispatch({
-          type: 'DEVICE_SET_BONDED_DEVICES',
-          payload: {bondedDevices},
-        });
-      }
-    } catch (error) {
-      console.error('❌ Failed to get bonded devices:', error);
     }
   }
 
@@ -169,16 +205,62 @@ export default class BluetoothService {
     this.manager.destroy();
   }
 
+  // startScan = async () => {
+  //   console.log('📡 Attempting BLE Scan...');
+
+  //   try {
+  //     await requestBluetoothPermissions(); // ✅ Request required permissions
+  //   } catch (e) {
+  //     Alert.alert('Permission Error', e.message || 'Unable to get permissions');
+  //     return;
+  //   }
+
+  //   const isBluetoothEnabled = await RNBluetoothClassic.isBluetoothEnabled();
+  //   if (!isBluetoothEnabled) {
+  //     Alert.alert(
+  //       'Bluetooth Disabled',
+  //       'Please turn on Bluetooth to scan for nearby devices.',
+  //       [{text: 'OK'}],
+  //     );
+  //     return;
+  //   }
+
+  //   BluetoothService.startScan(
+  //     () => {
+  //       console.log('✅ BLE State: PoweredOn');
+  //     },
+  //     devicesFound => {
+  //       console.log('📍 Devices found:', devicesFound);
+
+  //       const bonded = devicesFound.filter(d => d.bonded === true);
+  //       const unbonded = devicesFound.filter(d => d.bonded !== true);
+
+  //       this.updateBondedDevices(bonded);
+  //       this.setState({availableDevices: unbonded});
+
+  //       // Alert when any device found
+  //       if (devicesFound.length > 0) {
+  //         Alert.alert(
+  //           'Device Found',
+  //           `${devicesFound.length} BLE device(s) found nearby.`,
+  //         );
+  //       }
+  //     },
+  //   );
+  // };
+
   static startScan = async (
     bluetoothStateFunction,
     updateFunction,
     reduxDispatch,
   ) => {
-    const ready = await BluetoothService.ensureBleScanReady();
+    const ready = await BluetoothService.ensureBleScanReady(); // ✅ Bluetooth + GPS check
     if (!ready) {
+      console.log('❌ BLE scan readiness check failed. Aborting scan.');
       return;
     }
 
+    // Clean up any previous scan intervals
     if (this.bleDevicesFoundUpdateIntervalId) {
       clearInterval(this.bleDevicesFoundUpdateIntervalId);
       this.bleDevicesFoundUpdateIntervalId = null;
@@ -186,7 +268,6 @@ export default class BluetoothService {
 
     this.bluetoothStateFunction = bluetoothStateFunction;
     this.updateFunction = updateFunction;
-    this.reduxDispatch = reduxDispatch;
     this.bleDevicesFound = [];
 
     const scanFn = () => {
@@ -200,20 +281,21 @@ export default class BluetoothService {
           }
 
           this.isScanning = true;
+
           const now = Date.now();
 
+          // Remove stale devices older than 5s
           this.bleDevicesFound = this.bleDevicesFound.filter(
             ({timestamp}) => timestamp > now - 5000,
           );
 
+          // Check for duplicates
           const alreadyAdded = this.bleDevicesFound.find(
             o => o.bleDevice.id === device.id,
           );
 
-          const deviceName = device.name || device.localName;
-
-          if (!alreadyAdded && deviceName) {
-            console.log('📡 Found BLE device:', deviceName, device.id);
+          if (!alreadyAdded && device.name) {
+            console.log('📡 Found BLE device:', device.name, device.id);
 
             const newEntry = {
               bleDevice: device,
@@ -235,6 +317,7 @@ export default class BluetoothService {
       );
     };
 
+    // Periodic cleanup of stale devices
     this.bleDevicesFoundUpdateIntervalId = setInterval(() => {
       const now = Date.now();
       this.bleDevicesFound = this.bleDevicesFound.filter(
@@ -249,13 +332,14 @@ export default class BluetoothService {
       }
     }, 10000);
 
+    // Watch for Bluetooth state and trigger scan
     this.subscription = this.manager.onStateChange(state => {
       console.log('BLE State:', state);
       if (bluetoothStateFunction) {
-        bluetoothStateFunction(state);
+        bluetoothStateFunction.call(this, state);
       }
       if (state === 'PoweredOn') {
-        scanFn();
+        scanFn.call(this);
       }
     }, true);
   };
@@ -267,12 +351,11 @@ export default class BluetoothService {
       clearInterval(this.bleDevicesFoundUpdateIntervalId);
       this.bleDevicesFoundUpdateIntervalId = null;
     }
-    if (this.manager) {
-      this.manager.stopDeviceScan();
+    if (!this.manager) {
+      return true;
     }
+    this.manager.stopDeviceScan();
   };
-
-  // In src/services/BluetoothService.js - Update connectAndListen method
 
   static connectAndListen = (
     device,
@@ -281,143 +364,120 @@ export default class BluetoothService {
     onBatteryDataReceivedHandler,
     onDeviceDisconnectedHandler = undefined,
   ) => {
-    console.log('🔗 connectAndListen', device);
+    console.log('XXX connectAndListen device', device);
 
-    // Get the actual BLE device object if we received a wrapper
-    const actualDevice = device.bleDevice || device;
-    const deviceId = actualDevice.id;
-
-    if (!deviceId) {
-      console.error('Invalid device object - missing ID:', device);
-      return;
-    }
-
-    const connectedDiscoveredAction = connectedDevice => {
-      // Use the connected device instance, not the original one
-      connectedDevice.monitorCharacteristicForService(
+    const connectedDiscoveredAction = () => {
+      device.monitorCharacteristicForService(
         '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
         '266b64b4-19ee-4941-8253-650b4d7ab197',
         (error, characteristic) => {
-          if (error) {
-            console.error('Battery monitoring error:', error);
-            return;
-          }
           if (characteristic) {
             this.stopScan();
+            const batteryReponseJsonStr = base64.decode(characteristic.value);
             try {
-              const batteryData = JSON.parse(
-                base64.decode(characteristic.value),
-              );
-              onBatteryDataReceivedHandler(batteryData);
+              const batteryDataObj = JSON.parse(batteryReponseJsonStr);
+              onBatteryDataReceivedHandler.call(this, batteryDataObj);
             } catch (e) {
-              console.error('Battery JSON parse error:', e);
+              console.error('Error', e);
             }
           }
         },
       );
 
-      connectedDevice.monitorCharacteristicForService(
+      device.monitorCharacteristicForService(
         'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
         '9915b449-2b52-429b-bfd0-ab634002404d',
         (error, characteristic) => {
-          if (error) {
-            console.error('Sensor monitoring error:', error);
-            return;
-          }
           if (characteristic) {
             this.stopScan();
+            const responseStr = base64.decode(characteristic.value);
+
+            console.log(`responseStr ${responseStr}`);
             try {
-              const sensorData = base64.decode(characteristic.value);
-              onSensorDataReceivedHandler(sensorData);
+              onSensorDataReceivedHandler.call(this, responseStr);
             } catch (e) {
-              console.error('Sensor data error:', e);
+              console.error('Error', e);
             }
           }
         },
       );
 
-      this.connectedDevice = connectedDevice;
+      this.connectedDevice = device;
     };
 
-    this.manager.onDeviceDisconnected(deviceId, (error, d) => {
-      console.log('Device disconnected event:', deviceId, error);
-      if (onDeviceDisconnectedHandler) {
+    this.manager.onDeviceDisconnected(device.id, (error, device) => {
+      if (onDeviceDisconnectedHandler !== undefined) {
         onDeviceDisconnectedHandler();
+      } else {
+        console.error('onDeviceDisconnectedHandler is undefined');
       }
     });
 
     this.manager
-      .isDeviceConnected(deviceId)
+      .isDeviceConnected(device.id)
       .then(isConnected => {
-        console.log(
-          `Device ${deviceId} connection status:`,
-          isConnected ? 'connected' : 'disconnected',
-        );
+        console.log('XXXXX isConnected', isConnected);
         if (isConnected) {
-          // If already connected, use the existing connection
-          this.manager
-            .connectToDevice(deviceId)
-            .then(connectedDevice => {
-              connectedDiscoveredAction(connectedDevice);
-              onDeviceConnectedHandler();
-            })
-            .catch(error => {
-              console.error('Error retrieving connected device:', error);
-            });
+          connectedDiscoveredAction();
         } else {
-          // Connect to device with retry mechanism
           this.manager
-            .connectToDevice(deviceId, {
+            .connectToDevice(device.id, {
               timeout: 15000,
               autoConnect: true,
               requestMTU: 200,
             })
-            .then(connectedDevice => {
-              console.log('Successfully connected to device:', deviceId);
-              onDeviceConnectedHandler();
+            .then(device => {
+              onDeviceConnectedHandler.call(this);
+              console.log(
+                'Connected, running requestConnectionPriorityForDevice...',
+                device,
+              );
               this.manager
                 .requestConnectionPriorityForDevice(
-                  deviceId,
+                  device.id,
                   ConnectionPriority.High,
                 )
-                .then(() => {
-                  connectedDevice
+                .then(device => {
+                  console.log(
+                    'requestConnectionPriorityForDevice, discovering...',
+                    device,
+                  );
+                  // if (updateFn) updateFn.call(this,{ status: 'connected' })
+                  device
                     .discoverAllServicesAndCharacteristics()
-                    .then(() => {
-                      console.log('Services discovered for device:', deviceId);
-                      connectedDiscoveredAction(connectedDevice);
+                    .then(device => {
+                      connectedDiscoveredAction();
                     })
                     .catch(error => {
-                      console.error('Service discovery error:', error);
+                      //console.log('Error on discoverAllServicesAndCharacteristics',error)
+                      reject(
+                        `Error on discoverAllServicesAndCharacteristics: ${error}`,
+                      );
                     });
                 })
                 .catch(error => {
-                  console.error('Connection priority error:', error);
-                  // Try to continue anyway
-                  connectedDevice
-                    .discoverAllServicesAndCharacteristics()
-                    .then(() => connectedDiscoveredAction(connectedDevice))
-                    .catch(e =>
-                      console.error(
-                        'Service discovery error after priority error:',
-                        e,
-                      ),
-                    );
+                  //console.log("Can't run requestConnectionPriorityForDevice",error)
                 });
             })
             .catch(error => {
-              console.error(`Connect error for device ${deviceId}:`, error);
+              //console.log('Error on connectToDevice',error)
+              if (updateFn) {
+                //console.log("XXX running updateFn")
+                updateFn.call(this, {status: 'connecterror'});
+              }
+              reject(error);
             });
         }
       })
       .catch(error => {
-        console.error(`Connection check error for device ${deviceId}:`, error);
+        console.log('Error Uk2', error);
       });
   };
 
   static disconnectConnectedDevice() {
     if (this.manager) {
       this.manager.connectedDevices(this.serviceIdsArray).then(devices => {
+        console.log('KKKKK connectedDevices', devices);
         devices.forEach(device => {
           device.cancelConnection();
         });
@@ -435,17 +495,22 @@ export default class BluetoothService {
 
   static stopScanningDisconnectConnectedDestroyBleManager() {
     this.stopScan();
+    if (!this.manager) {
+      return true;
+    }
     if (this.subscription) {
       this.subscription.remove();
     }
-    if (this.manager) {
-      this.manager
-        .connectedDevices(this.serviceIdsArray)
-        .then(devices => {
-          devices.forEach(d => d.cancelConnection());
-          this.manager.destroy();
-        })
-        .catch(e => console.log('Destroy error:', e));
-    }
+    this.manager
+      .connectedDevices(this.serviceIdsArray)
+      .then(connectedDevicesArray => {
+        connectedDevicesArray.forEach(device => {
+          device.cancelConnection();
+        });
+        this.manager.destroy();
+      })
+      .catch(error => {
+        console.log('Error Uk2', error);
+      });
   }
 }

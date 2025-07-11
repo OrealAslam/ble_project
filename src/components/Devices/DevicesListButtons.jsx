@@ -38,8 +38,8 @@ const DevicesListButtons = ({enterDemoModeButtonPressHandler}) => {
           justifyContent: 'flex-start',
           alignItems: 'center',
         }}>
-        <Button size="sm" onPress={enterDemoModeButtonPressHandler}>
-          Demo Mode...
+        <Button size="sm" buttonStyle={{borderRadius: 5, paddingHorizontal: 16}} onPress={enterDemoModeButtonPressHandler}>
+          Demo Mode
         </Button>
       </View>
     </View>

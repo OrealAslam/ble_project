@@ -120,10 +120,11 @@ const styles = {
     height: 3,
   },
   tabBar: {
-    paddingBottom: 40,
+    // paddingBottom: 40,
   },
   title: {
     fontSize: 12,
+    color: '#fff'
   },
 };
 

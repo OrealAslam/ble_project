@@ -1,12 +1,12 @@
-import React, {Component} from 'react';
+import React, { Component } from 'react';
 import PropTypes from 'prop-types';
-import {SafeAreaView} from 'react-native';
+import { SafeAreaView, Text } from 'react-native';
 
-import {connect} from 'react-redux';
-import {CommonActions} from '@react-navigation/native';
+import { connect } from 'react-redux';
+import { CommonActions } from '@react-navigation/native';
 
-import {fetchLoggingSessions} from '../../actions/LoggingActions';
-import {fetchKnownDevices} from '../../actions/DeviceActions';
+import { fetchLoggingSessions } from '../../actions/LoggingActions';
+import { fetchKnownDevices } from '../../actions/DeviceActions';
 import IndexList from '../../components/LoggingSessions/IndexList';
 
 class LoggingSessions extends Component {
@@ -17,19 +17,21 @@ class LoggingSessions extends Component {
     };
   }
 
+
   componentDidMount() {
     this.props.dispatch(fetchLoggingSessions());
     this.props.dispatch(fetchKnownDevices());
+    console.log('GGG', this.props)
   }
 
-  componentDidUpdate() {}
+  componentDidUpdate() { }
 
-  componentWillUnmount() {}
+  componentWillUnmount() { }
 
   routeToLoggingSessionsView = (loggingSessionId, formattedDateTime) => {
     const routeToLoggingSessionViewAction = CommonActions.navigate({
       name: 'Logging Session',
-      params: {loggingSessionId, formattedDateTime},
+      params: { loggingSessionId, formattedDateTime },
     });
     this.props.navigation.dispatch(routeToLoggingSessionViewAction);
   };
@@ -40,14 +42,22 @@ class LoggingSessions extends Component {
 
   renderBody = (props, state) => {
     return (
-      <SafeAreaView style={{flex: 1}}>
-        <IndexList
-          devices={props.devices}
-          logging={props.logging}
-          isFetching={this.state.isFetching}
-          listRefreshHandler={this.onRefresh}
-          listItemPressHandler={this.routeToLoggingSessionsView}
-        />
+      <SafeAreaView style={{ flex: 1 }}>
+        {
+          props.logging.loggingSessions.length === 0 ? (
+            <Text style={{ fontSize: 16, color: '#888', textAlign: 'center', marginTop: 20 }}>
+              No logging sessions found.
+            </Text>
+          ) : (
+            <IndexList
+              devices={props.devices}
+              logging={props.logging}
+              isFetching={this.state.isFetching}
+              listRefreshHandler={this.onRefresh}
+              listItemPressHandler={this.routeToLoggingSessionsView}
+            />
+          )
+        }
       </SafeAreaView>
     );
   };
@@ -57,6 +67,6 @@ class LoggingSessions extends Component {
   }
 }
 
-export default connect(({devices, logging}) => ({devices, logging}))(
+export default connect(({ devices, logging }) => ({ devices, logging }))(
   LoggingSessions,
 );

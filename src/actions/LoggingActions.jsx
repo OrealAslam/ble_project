@@ -264,7 +264,7 @@ export const fetchLoggingSessions = () => async dispatch => {
     for (let i = 0; i < results.rows.length; i++) {
       loggingSessions.push(results.rows.item(i));
     }
-
+    console.log('Fetched logging sessions:', loggingSessions);
     dispatch({
       // type: 'LOGGING_FETCH_loggingSessionSamples',
       type: 'LOGGING_FETCH_LOGGING_SESSIONS',

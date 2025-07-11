@@ -84,11 +84,12 @@ const Navigator = () => {
             headerTitleStyle: {
               fontWeight: '700',
               fontSize: 16,
-              color: '#000',
+              color: '#fff',
             },
           }}>
           <RootStack.Screen
             name="Logging Sessions"
+            headerTitleStyle={{color: '#fff'}}
             component={LoggingSessions}
           />
           <RootStack.Screen

@@ -55,6 +55,10 @@
 	<array>
 		<string>arm64</string>
 	</array>
+	<key>UISupportedExternalAccessoryProtocols</key> <!--for bluetooth-classic package-->
+	<array>
+		<string>com.apple.m1</string>
+	</array>
 	<key>UIRequiresFullScreen</key>
 	<true/>
 	<key>UISupportedInterfaceOrientations</key>

@@ -317,8 +317,8 @@ export default class BluetoothService {
       );
 
       connectedDevice.monitorCharacteristicForService(
-        'c25d444c-2836-4cc0-8f2f-95f4c8fd7f8b',
-        '9915b449-2b52-429b-bfd0-ab634002404d',
+        '86a324aa-4b2f-46c7-b4d8-949cae59e6d7',
+        '266b64b4-19ee-4941-8253-650b4d7ab197',
         (error, characteristic) => {
           if (error) {
             console.error('Sensor monitoring error:', error);
